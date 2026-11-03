@@ -1,0 +1,15 @@
+/dist/
+/build/
+/.build/
+/private/
+/.env
+/.env.*
+**/__pycache__/
+*.pyc
+*.log
+*.sql
+*.sqlite
+*.bak
+*.zip
+*.zip.sha256
+.DS_Store

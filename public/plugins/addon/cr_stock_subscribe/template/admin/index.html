@@ -1,0 +1,263 @@
+<div id="content" class="template stock-subscribe-admin" v-cloak>
+  <com-config>
+    <t-card class="list-card-container">
+      <div class="common-header"><div><div class="table-title">补货订阅 <t-tag variant="light">0.1.0</t-tag></div><p class="second-text-color">按商品总库存订阅；个人通知与商家群推送分别管理。</p></div></div>
+      <t-space v-if="health" :break-line="true" align="center" class="mb24">
+        <t-tag :theme="health.state==='normal'?'success':health.state==='paused'?'default':'warning'" variant="light">{{health.state==='normal'?'任务运行中':health.state==='paused'?'已暂停':'需要检查'}}</t-tag>
+        <t-tooltip :content="'最近完整检查：'+time(health.last_success_at)"><span class="second-text-color">最近检查启动 {{time(health.last_cron_at)}}</span></t-tooltip>
+        <span class="second-text-color">待发送 {{health.pending_deliveries || 0}} 条 · 待合并 {{health.pending_items || 0}} 项 · 冷却等待 {{health.deferred_items || 0}} 项 · 条件复核 {{health.waiting_items || 0}} 项 · 最长等待 {{waitLabel(health.oldest_wait_seconds)}}</span>
+        <t-button variant="text" :loading="healthLoading" @click="loadHealth">刷新状态</t-button><t-button v-if="allowed('log')" variant="text" @click="showPendingRecords">查看待发记录</t-button>
+      </t-space>
+      <t-alert v-if="health && health.state!=='normal'" :theme="health.state==='paused'?'info':'warning'" :message="health.message" class="mb24" role="status"></t-alert>
+      <t-collapse v-if="health && health.issue_count" class="mb24"><t-collapse-panel :header="'本轮有 '+health.issue_count+' 项异常，其他任务继续处理'"><t-table row-key="reference" :data="health.issues" :columns="[{colKey:'scope',title:'处理阶段',width:124},{colKey:'id',title:'相关编号',width:112},{colKey:'reference',title:'日志核对编号',minWidth:220}]" size="small"></t-table></t-collapse-panel></t-collapse>
+      <t-alert v-if="error" theme="error" :message="error" role="alert"></t-alert>
+      <t-alert v-if="notice" theme="success" :message="notice" close @close="notice=''" role="status"></t-alert>
+      <t-alert v-if="permissionsLoading" theme="info" message="正在读取当前管理员权限…" role="status"></t-alert>
+      <t-alert v-else-if="permissionsReady && !hasPagePermission" theme="warning" message="当前管理员没有补货订阅的页面查看权限，请联系超级管理员分配所需权限。" role="status"></t-alert>
+      <t-button v-if="!permissionsLoading && (!permissionsReady || !hasPagePermission)" variant="outline" @click="loadPermissions">重新读取权限</t-button>
+      <t-tabs v-if="permissionsReady && hasPagePermission" v-model="tab" @change="tabChanged">
+        <t-tab-panel v-if="allowed('view') || allowed('setting')" value="products" label="商品与订阅">
+          <div class="common-header"><t-radio-group v-model="view" variant="default-filled" @change="viewChanged"><t-radio-button value="products">商品与需求</t-radio-button><t-radio-button v-if="allowed('view')" value="subscriptions">客户订阅</t-radio-button></t-radio-group><t-button variant="outline" :loading="loading" @click="viewChanged">刷新</t-button></div>
+          <template v-if="view==='products'">
+            <t-row :gutter="[16,16]" class="mb24">
+              <t-col :xs="12" :sm="6" :md="3"><t-select v-model="productGroupFilter" :options="productGroupOptions" filterable aria-label="商品分类" @change="applyProductFilters"></t-select></t-col>
+              <t-col :xs="12" :sm="6" :md="2"><t-select v-model="productStateFilter" :options="[{label:'全部订阅状态',value:'all'},{label:'已开放订阅',value:'1'},{label:'未开放订阅',value:'0'}]" aria-label="订阅开放状态" @change="applyProductFilters"></t-select></t-col>
+              <t-col :xs="9" :sm="9" :md="5"><t-input v-model="keywords" placeholder="搜索商品编号、商品名称或分类" clearable @enter="applyProductFilters" @clear="applyProductFilters"></t-input></t-col>
+              <t-col :xs="3" :sm="3" :md="2"><t-button :disabled="loading" @click="applyProductFilters">查询</t-button></t-col>
+            </t-row>
+            <div class="common-header">
+              <t-space :break-line="true" align="center">
+                <template v-if="allowed('setting')"><t-button :disabled="!selected.length || selected.length>200 || busy || loading" @click="configureSelected(1)">开放所选商品</t-button><t-button variant="outline" :disabled="!selected.length || selected.length>200 || busy || loading" @click="configureSelected(0)">关闭所选商品</t-button></template>
+                <span class="second-text-color">共 {{filteredProducts.length}} 个商品 · 已开放 {{visibleEnabledCount}} 个<span v-if="selected.length"> · 已选 {{selected.length}} 个</span></span><t-tag v-if="selected.length>200" theme="warning" variant="light">每批最多 200 个商品</t-tag><t-button v-if="selected.length" variant="text" :disabled="busy" @click="selected=[]">清空选择</t-button>
+              </t-space>
+              <t-space><t-button variant="text" :disabled="loading" @click="expandProducts(true)">全部展开</t-button><t-button variant="text" :disabled="loading" @click="expandProducts(false)">全部收起</t-button></t-space>
+            </div>
+            <t-enhanced-table row-key="key" :data="productTree" :columns="productColumns" :loading="loading || busy" :tree="{treeNodeColumnIndex:1,checkStrictly:false}" :expanded-tree-nodes="expandedProducts" @expanded-tree-nodes-change="keys=>expandedProducts=keys" :selected-row-keys="productSelectionKeys" @select-change="selectProducts" empty="没有符合条件的商品" hover>
+              <template #group="{row}"><template v-if="row.kind==='group'"><span class="second-text-color">{{row.id?'#'+row.id+'-':''}}{{row.name}}</span><t-tag v-if="Number(row.hidden)" size="small" variant="light">已隐藏</t-tag></template></template>
+              <template #name="{row}"><template v-if="row.kind==='product'"><t-link theme="primary" hover="underline" :href="productDetailPage(row.id)" target="_blank" rel="noopener noreferrer">#{{row.id}}-{{row.name}}</t-link><t-tag v-if="Number(row.hidden)" size="small" variant="light">已隐藏</t-tag></template></template>
+              <template #stock="{row}"><t-tooltip v-if="row.kind==='product'" :content="row.inventory_reason || '商品级库存'" :disabled="!row.inventory_reason"><span :class="row.inventory_state==='known'?'':'third-text-color'">{{stockLabel(row)}}</span></t-tooltip></template>
+              <template #enabled="{row}"><t-switch v-if="row.kind==='product'" :value="Number(row.enabled)" :custom-value="[1,0]" :disabled="busy || loading || !allowed('setting')" @change="value=>configure(row.id,value)"></t-switch></template>
+              <template #demand="{row}"><t-tooltip v-if="row.kind==='product'" :content="demandTip(row)"><t-button v-if="row.subscribers && allowed('view')" size="small" variant="text" @click="showProductSubscriptions(row)">{{row.subscribers}} 人订阅</t-button><span v-else class="third-text-color">{{row.subscribers}} 人订阅</span></t-tooltip></template>
+              <template #last="{row}"><template v-if="row.kind==='product'">{{time(row.last_notified_at)}}</template></template>
+            </t-enhanced-table>
+          </template>
+          <template v-else>
+            <t-row :gutter="[16,16]" class="mb24">
+              <t-col :xs="12" :md="4"><t-input v-model="subscriptionFilter.keywords" placeholder="搜索商品名称、订阅或商品编号" clearable @enter="searchSubscriptions"></t-input></t-col>
+              <t-col :xs="6" :md="2"><t-select v-model="subscriptionFilter.status" :options="subscriptionStatuses" aria-label="订阅状态筛选"></t-select></t-col>
+              <t-col :xs="6" :md="2"><t-select v-model="subscriptionFilter.channel" :options="channelOptions" aria-label="订阅渠道筛选"></t-select></t-col>
+              <t-col :xs="6" :md="2"><t-select v-model="subscriptionFilter.mode" :options="modeOptions" aria-label="提醒模式筛选"></t-select></t-col>
+              <t-col :xs="6" :md="2"><t-input v-model="filterClient" placeholder="客户编号" clearable @enter="searchSubscriptions"></t-input></t-col>
+              <t-col :xs="6" :md="2"><t-input v-model="filterProduct" placeholder="商品编号" clearable @enter="searchSubscriptions"></t-input></t-col>
+              <t-col :xs="12" :md="5"><t-date-range-picker allow-input v-model="subscriptionFilter.dates" value-type="YYYY-MM-DD" clearable :placeholder="['订阅开始日期','订阅结束日期']" aria-label="订阅日期范围"></t-date-range-picker></t-col>
+              <t-col :xs="12" :md="5"><t-space><t-button :loading="loading" @click="searchSubscriptions">查询订阅</t-button><t-button variant="outline" :disabled="loading" @click="resetSubscriptions">重置订阅筛选</t-button></t-space></t-col>
+            </t-row>
+            <t-table row-key="id" :data="subscriptions" :columns="visibleSubscriptionColumns" :loading="loading" hover>
+              <template #client_id="{row}"><t-link theme="primary" hover="underline" :href="clientDetailPage(row.client_id)" target="_blank" rel="noopener noreferrer">{{row.client_id}}</t-link></template>
+              <template #product_name="{row}"><t-link theme="primary" hover="underline" v-if="row.product_exists" :href="productDetailPage(row.product_id)" target="_blank" rel="noopener noreferrer">{{row.product_name}}</t-link><span v-else>{{row.product_name}}</span></template>
+              <template #threshold="{row}"><span :title="'库存超过 '+row.threshold+' 件，即至少 '+(Number(row.threshold)+1)+' 件'">&gt; {{row.threshold}} 件</span></template>
+              <template #channels="{row}">{{row.channels.map(channel).join('、')}}</template><template #mode="{row}">{{row.mode==='once'?'提醒一次':'持续订阅'}}</template>
+              <template #status="{row}"><span :title="status(row.status)">{{tableStatus(row.status)}}</span></template><template #progress="{row}"><span :title="progressTip(row)">{{row.notification_wait || '—'}}</span></template><template #deferred="{row}">{{time(row.deferred_until)}}</template><template #expires="{row}">{{time(row.expires_at)}}</template>
+              <template #op="{row}"><t-button variant="text" :disabled="busy" @click="showDiagnosis(row)">查看未通知原因</t-button><t-button v-if="allowed('manage') && row.status==='active'" variant="text" :disabled="busy" @click="cancel(row)">取消订阅</t-button></template>
+            </t-table><t-pagination v-if="subscriptionTotal" :current="subscriptionPage" :page-size="20" :total="subscriptionTotal" :show-page-size="false" @change="e=>loadSubscriptions(e.current)"></t-pagination>
+          </template>
+        </t-tab-panel>
+        <t-tab-panel v-if="allowed('broadcast')" value="broadcast" label="补货群发">
+          <p class="second-text-color">只发送给有效订阅且达到门槛的客户，同一客户的多个商品按渠道合并。人工群发与自动提醒共用去重和额度限制。</p>
+          <t-form label-align="top" @submit="previewBroadcast">
+            <t-form-item label="选择商品"><t-select v-model="broadcastForm.product_ids" multiple filterable :options="productOptions" placeholder="搜索并选择商品" @search="searchOptions" @change="invalidatePreview"></t-select></t-form-item>
+            <t-form-item label="发送目标"><t-checkbox v-model="broadcastForm.clients" @change="invalidatePreview">通知订阅客户</t-checkbox><t-checkbox v-model="broadcastForm.groups" @change="invalidatePreview">推送到已配置的商家群</t-checkbox></t-form-item>
+            <t-button theme="primary" type="submit" :loading="busy">预览本次群发</t-button>
+          </t-form>
+          <div v-if="preview" class="table-add"><t-alert theme="info" :title="'涉及 '+preview.products+' 个商品、'+preview.customers+' 位客户'" :message="'邮件 '+preview.channels.email+' 封，短信 '+preview.channels.sms+' 条，个人 Webhook '+preview.channels.webhook+' 组，商家群 '+preview.channels.group+' 组。短信预计计费 '+preview.sms_units+' 条。预览有效至 '+time(preview.preview_expires_at)+'。'"></t-alert><p class="third-text-color">{{preview.sms_estimate_notice}}</p><t-table v-if="Object.keys(preview.skipped).length" row-key="reason" :data="Object.keys(preview.skipped).map(reason=>({reason:reason,count:preview.skipped[reason]}))" :columns="[{colKey:'reason',title:'跳过原因',minWidth:360,ellipsis:true},{colKey:'count',title:'商品提醒项数',width:132,align:'right'}]" size="small"></t-table><t-button theme="primary" :loading="busy" :disabled="!preview.items" @click="sendBroadcast">确认发送本批补货通知</t-button></div>
+        </t-tab-panel>
+        <t-tab-panel v-if="allowed('log')" value="records" label="通知记录">
+          <div class="common-header"><t-radio-group v-model="recordView" variant="default-filled" @change="loadRecordView()"><t-radio-button value="notifications">通知记录</t-radio-button><t-radio-button value="pending">待处理明细</t-radio-button><t-radio-button value="audit">操作日志</t-radio-button></t-radio-group><t-button variant="outline" :loading="loading" @click="loadRecordView()">刷新记录</t-button></div>
+          <template v-if="recordView==='notifications'">
+            <p class="second-text-color">商品隐藏或删除后，将按有效订阅客户选择的渠道通知；下架通知不消耗一次补货提醒。接口受理不代表客户已收到。结果未知不自动重发，避免重复通知或短信计费。</p>
+            <t-alert v-if="recordQuery.waiting" theme="info" message="当前仅显示仍在有效期内的待发送记录；未合并的商品提醒可从订阅详情查看。" class="mb24"></t-alert>
+            <t-row :gutter="[16,16]" class="mb24">
+              <t-col :xs="12" :md="4"><t-input v-model="recordFilter.keywords" placeholder="搜索商品名称、事件编号或原因" clearable @enter="searchRecords"></t-input></t-col>
+              <t-col :xs="6" :md="2"><t-select v-model="recordFilter.archive" :options="[{label:'全部历史范围',value:'all'},{label:'未归档通知',value:'current'},{label:'已归档通知',value:'archived'}]" aria-label="历史归档范围"></t-select></t-col>
+              <t-col :xs="6" :md="2"><t-select v-model="recordFilter.status" :options="deliveryStatuses" aria-label="发送状态筛选"></t-select></t-col>
+              <t-col :xs="6" :md="2"><t-select v-model="recordFilter.channel" :options="channelOptions" aria-label="通知渠道筛选"></t-select></t-col>
+              <t-col :xs="6" :md="2"><t-select v-model="recordFilter.event_type" :options="eventOptions" aria-label="通知类型筛选"></t-select></t-col>
+              <t-col :xs="6" :md="2"><t-select v-model="recordFilter.source" :options="sourceOptions" aria-label="通知来源筛选"></t-select></t-col>
+              <t-col :xs="6" :md="2"><t-select v-model="recordFilter.target" :options="[{label:'全部接收类型',value:''},{label:'个人通知',value:'personal'},{label:'商家群',value:'group'}]" aria-label="接收类型筛选"></t-select></t-col>
+              <t-col :xs="6" :md="2"><t-select v-model="recordFilter.review" :options="[{label:'全部核对结果',value:''},{label:'未知且未登记',value:'unreviewed'},{label:'已确认受理',value:'accepted'},{label:'确认未受理',value:'not_accepted'},{label:'仍无法确认',value:'unresolved'}]" aria-label="人工核对结果"></t-select></t-col>
+              <t-col :xs="6" :md="2"><t-input v-model="recordFilter.client_id" placeholder="通知客户编号" clearable @enter="searchRecords"></t-input></t-col>
+              <t-col :xs="6" :md="2"><t-input v-model="recordFilter.endpoint_id" placeholder="Webhook 地址编号" clearable @enter="searchRecords"></t-input></t-col>
+              <t-col :xs="6" :md="2"><t-input v-model="recordFilter.product_id" placeholder="通知商品编号" clearable @enter="searchRecords"></t-input></t-col>
+              <t-col :xs="12" :md="4"><t-date-range-picker allow-input v-model="recordFilter.dates" value-type="YYYY-MM-DD" clearable :placeholder="['通知开始日期','通知结束日期']" aria-label="通知日期范围"></t-date-range-picker></t-col>
+              <t-col :xs="12" :md="4"><t-space><t-button :loading="loading" @click="searchRecords">查询通知</t-button><t-button variant="outline" :disabled="loading" @click="resetRecords">重置通知筛选</t-button></t-space></t-col>
+            </t-row>
+          <t-table row-key="id" :data="records" :columns="visibleRecordColumns" :loading="loading" hover>
+            <template #event_type="{row}"><t-tag :theme="row.event_type==='delisted'?'default':'primary'" variant="light">{{event(row.event_type)}}</t-tag></template>
+            <template #products="{row}"><span :title="(row.snapshot || []).map(p=>p.name).join('、')"><t-link v-if="row.snapshot && row.snapshot.length && row.snapshot[0].product_exists" theme="primary" hover="underline" :href="productDetailPage(row.snapshot[0].id)" target="_blank" rel="noopener noreferrer">{{row.snapshot[0].name}}</t-link><span v-else-if="row.snapshot && row.snapshot.length">{{row.snapshot[0].name}}</span><span v-if="row.snapshot && row.snapshot.length>1"> 等 {{row.snapshot.length}} 个商品</span><span v-if="!row.snapshot || !row.snapshot.length">—</span></span></template><template #product_count="{row}">{{(row.snapshot || []).length}}</template>
+            <template #target="{row}"><t-link theme="primary" hover="underline" v-if="row.client_id" :href="clientDetailPage(row.client_id)" target="_blank" rel="noopener noreferrer">客户 #{{row.client_id}}</t-link><span v-else>商家群</span></template><template #channel="{row}">{{channel(row.channel)}}</template><template #receiver="{row}">{{receiver(row)}}</template>
+            <template #status="{row}"><span :title="status(row.status)">{{tableStatus(row.status)}}</span></template><template #review="{row}">{{row.review?reviewLabel(row.review.outcome):'—'}}</template><template #reason="{row}">{{row.reason || '—'}}</template><template #created="{row}">{{time(row.created_at)}}</template><template #op="{row}"><t-button v-if="allowed('manage') && row.status==='failed'" variant="text" :disabled="busy" @click="retry(row)">重试</t-button><t-button v-if="allowed('review') && row.status==='unknown'" variant="text" :disabled="busy" @click="openReview(row)">登记核对</t-button><t-button variant="text" @click="recordDetail=row;recordVisible=true">详情</t-button></template>
+          </t-table><t-pagination v-if="recordTotal" :current="recordPage" :page-size="20" :total="recordTotal" :show-page-size="false" @change="e=>loadRecords(e.current)"></t-pagination>
+          </template>
+          <template v-else-if="recordView==='pending'">
+            <p class="second-text-color">逐商品查看等待合并、冷却复核和条件恢复的提醒。原因仅管理员可见；查看不会创建或发送通知。</p>
+            <t-row :gutter="[16,16]" class="mb24">
+              <t-col :xs="12" :md="4"><t-input v-model="pendingFilter.keywords" placeholder="搜索待处理商品名称、编号或原因" clearable @enter="searchPending"></t-input></t-col>
+              <t-col :xs="6" :md="2"><t-select v-model="pendingFilter.status" :options="[{label:'全部处理阶段',value:''},{label:'等待合并',value:'pending'},{label:'冷却复核',value:'deferred'},{label:'条件复核',value:'waiting'},{label:'已合并',value:'batched'},{label:'等待过期清理',value:'expired'}]" aria-label="待处理阶段"></t-select></t-col>
+              <t-col :xs="6" :md="2"><t-select v-model="pendingFilter.channel" :options="channelOptions" aria-label="待处理渠道"></t-select></t-col>
+              <t-col :xs="6" :md="2"><t-select v-model="pendingFilter.event_type" :options="eventOptions" aria-label="待处理通知类型"></t-select></t-col>
+              <t-col :xs="6" :md="2"><t-select v-model="pendingFilter.source" :options="sourceOptions" aria-label="待处理通知来源"></t-select></t-col>
+              <t-col :xs="6" :md="2"><t-select v-model="pendingFilter.target" :options="[{label:'全部接收类型',value:''},{label:'个人通知',value:'personal'},{label:'商家群',value:'group'}]" aria-label="待处理接收类型"></t-select></t-col>
+              <t-col :xs="6" :md="2"><t-input v-model="pendingFilter.client_id" placeholder="待处理客户编号" clearable @enter="searchPending"></t-input></t-col>
+              <t-col :xs="6" :md="2"><t-input v-model="pendingFilter.product_id" placeholder="待处理商品编号" clearable @enter="searchPending"></t-input></t-col>
+              <t-col :xs="6" :md="2"><t-input v-model="pendingFilter.endpoint_id" placeholder="待处理地址编号" clearable @enter="searchPending"></t-input></t-col>
+              <t-col :xs="12" :md="4"><t-date-range-picker allow-input v-model="pendingFilter.dates" value-type="YYYY-MM-DD" clearable :placeholder="['提醒开始日期','提醒结束日期']" aria-label="待处理提醒日期范围"></t-date-range-picker></t-col>
+              <t-col :xs="12" :md="4"><t-space><t-button :loading="loading" @click="searchPending">查询待处理</t-button><t-button variant="outline" :disabled="loading" @click="resetPending">重置待处理筛选</t-button></t-space></t-col>
+            </t-row>
+            <t-table row-key="id" :data="pending" :columns="pendingColumns" :loading="loading" empty="没有符合条件的待处理提醒" hover>
+              <template #product_name="{row}"><t-link v-if="row.product_exists" theme="primary" :href="productDetailPage(row.product_id)" target="_blank" rel="noopener noreferrer">{{row.product_name}}</t-link><span v-else>{{row.product_name}}</span></template>
+              <template #target="{row}"><t-link v-if="row.client_id" theme="primary" :href="clientDetailPage(row.client_id)" target="_blank" rel="noopener noreferrer">客户 #{{row.client_id}}</t-link><span v-else :title="row.endpoint_name">商家群</span></template>
+              <template #channel="{row}">{{channel(row.channel)}}</template><template #event_type="{row}">{{event(row.event_type)}}</template><template #status="{row}"><span :title="status(row.status)">{{tableStatus(row.status)}}</span></template><template #reason="{row}">{{row.reason || (row.status==='pending'?'等待合并窗口或队列处理':'—')}}</template><template #due="{row}">{{time(row.due_at)}}</template><template #expires="{row}">{{time(row.expires_at)}}</template>
+              <template #op="{row}"><t-button v-if="row.subscription_id && allowed('view') || row.delivery_id" variant="text" @click="openPending(row)">{{row.subscription_id && allowed('view')?'查看原因':'查看通知'}}</t-button><span v-else>—</span></template>
+            </t-table><t-pagination v-if="pendingTotal" :current="pendingPage" :page-size="20" :total="pendingTotal" :show-page-size="false" @change="e=>loadPending(e.current)"></t-pagination>
+          </template>
+          <template v-else>
+            <t-row :gutter="[16,16]" class="mb24">
+              <t-col :xs="12" :md="4"><t-input v-model="auditFilter.keywords" placeholder="搜索操作名称或日志、操作人编号" clearable @enter="searchAudits"></t-input></t-col>
+              <t-col :xs="6" :md="3"><t-select v-model="auditFilter.action" :options="auditActions" aria-label="操作类型筛选"></t-select></t-col>
+              <t-col :xs="6" :md="2"><t-select v-model="auditFilter.actor" :options="[{label:'全部操作人',value:''},{label:'管理员',value:'admin'},{label:'客户',value:'client'},{label:'系统任务',value:'system'}]" aria-label="操作人类型筛选"></t-select></t-col>
+              <t-col :xs="6" :md="3"><t-input v-model="auditFilter.actor_id" placeholder="管理员编号" clearable @enter="searchAudits"></t-input></t-col>
+              <t-col :xs="6" :md="2"><t-input v-model="auditFilter.client_id" placeholder="相关客户编号" clearable @enter="searchAudits"></t-input></t-col>
+              <t-col :xs="12" :md="5"><t-date-range-picker allow-input v-model="auditFilter.dates" value-type="YYYY-MM-DD" clearable :placeholder="['日志开始日期','日志结束日期']" aria-label="日志日期范围"></t-date-range-picker></t-col>
+              <t-col :xs="12" :md="5"><t-space><t-button :loading="loading" @click="searchAudits">查询日志</t-button><t-button variant="outline" :disabled="loading" @click="resetAudits">重置日志筛选</t-button></t-space></t-col>
+            </t-row>
+            <t-table row-key="id" :data="audits" :columns="auditColumns" :loading="loading" empty="没有符合条件的操作日志" hover>
+              <template #action="{row}">{{row.label}}</template><template #actor="{row}"><span v-if="row.actor_id">管理员 #{{row.actor_id}}</span><t-link v-else-if="row.actor_type==='client'" theme="primary" :href="clientDetailPage(row.client_id)" target="_blank" rel="noopener noreferrer">客户 #{{row.client_id}}</t-link><span v-else>系统任务</span></template>
+              <template #detail="{row}">{{auditSummary(row)}}</template><template #created="{row}">{{time(row.created_at)}}</template><template #op="{row}"><t-button variant="text" @click="auditDetail=row;auditVisible=true">详情</t-button></template>
+            </t-table><t-pagination v-if="auditTotal" :current="auditPage" :page-size="20" :total="auditTotal" :show-page-size="false" @change="e=>loadAudits(e.current)"></t-pagination>
+          </template>
+        </t-tab-panel>
+        <t-tab-panel v-if="allowed('setting')" value="settings" label="插件设置">
+          <t-tabs v-model="settingsTab" theme="card" class="mb24">
+            <t-tab-panel value="general" label="基础设置" :destroy-on-hide="false">
+              <t-form :data="settings" label-align="top" @submit="saveSettings">
+                <t-divider align="left">功能与通知渠道</t-divider>
+                <t-row :gutter="[24,24]">
+                  <t-col :xs="12" :md="4">
+                    <t-form-item label="开放补货订阅" help="关闭后停止新提醒及尚未发送的任务。">
+                      <t-space align="center"><t-switch v-model="settings.enabled" :custom-value="[1,0]" :disabled="settingsLoading"></t-switch><span class="second-text-color">{{settings.enabled?'已开放':'已关闭'}}</span></t-space>
+                    </t-form-item>
+                  </t-col>
+                  <t-col :xs="12" :md="8">
+                    <t-form-item label="客户可用渠道" help="关闭渠道后，客户无法选用，尚未发送的任务也会停止；商家群单独配置。">
+                      <t-space :size="24" :break-line="true"><t-checkbox :checked="!!settings.email" @change="v=>settings.email=Number(v)">邮件</t-checkbox><t-checkbox :checked="!!settings.sms" @change="v=>settings.sms=Number(v)">短信</t-checkbox><t-checkbox :checked="!!settings.webhook" @change="v=>settings.webhook=Number(v)">个人 Webhook</t-checkbox></t-space>
+                    </t-form-item>
+                  </t-col>
+                  <t-col :xs="12">
+                    <t-form-item label="展示内容" help="应用于客户商品列表及通知内容；展示价格以实际下单时为准。">
+                      <t-space :size="24" :break-line="true"><t-checkbox :checked="!!settings.show_quantity" @change="v=>settings.show_quantity=Number(v)">具体库存数量</t-checkbox><t-checkbox :checked="!!settings.show_price" @change="v=>settings.show_price=Number(v)">当前价格</t-checkbox></t-space>
+                    </t-form-item>
+                  </t-col>
+                </t-row>
+                <t-divider align="left">订阅限制</t-divider>
+                <t-row :gutter="[24,24]">
+                  <t-col v-for="field in subscriptionFields" :key="field.key" :xs="12" :sm="6">
+                    <t-form-item :label="settingLabels[field.key]" :name="field.key" :help="field.help">
+                      <t-input-number v-model="settings[field.key]" :min="field.min" :max="field.max" :decimal-places="0" :suffix="field.unit" theme="normal" style="width:100%"></t-input-number>
+                    </t-form-item>
+                  </t-col>
+                </t-row>
+              </t-form>
+            </t-tab-panel>
+            <t-tab-panel value="rules" label="通知规则" :destroy-on-hide="false">
+              <t-form class="stock-notification-rules" :data="settings" label-align="top" @submit="saveSettings">
+                <template v-for="section in ruleSections">
+                  <t-divider :key="section.title" align="left">{{section.title}}</t-divider>
+                  <t-row :key="section.title+'fields'" :gutter="[24,24]">
+                    <t-col v-for="field in section.fields" :key="field.key" :xs="12" :sm="6" :lg="section.fields.length===2?6:4">
+                      <t-form-item :label="settingLabels[field.key]" :name="field.key" :help="field.key==='notification_seconds' && Number(settings.notification_seconds)<Number(settings.merge_seconds)+180?'当前有效期较短，可以保存；建议比合并窗口多留 180 秒，避免分钟任务或限速排队时过期。':field.help">
+                        <t-input-number v-model="settings[field.key]" :min="field.key==='notification_seconds'?Math.max(60,Number(settings.merge_seconds || 0)+1):field.min" :max="field.max" :allow-input-over-limit="false" :decimal-places="0" :suffix="field.unit" theme="normal" style="width:100%"></t-input-number>
+                      </t-form-item>
+                    </t-col>
+                  </t-row>
+                </template>
+                <p class="third-text-color">短信额度按预计计费条数计算，包含签名预留与发送中的占用，实际以服务商账单为准。</p>
+              </t-form>
+            </t-tab-panel>
+            <t-tab-panel value="templates" label="通知模板" :destroy-on-hide="false">
+              <div class="common-header"><div><p class="com-first-title">邮件与短信模板</p><p class="second-text-color">复用 V10 模板和测试功能。补货、下架分别使用单商品和多商品模板。默认短信不含链接，可自行在模板中引用链接参数；长商品名可使用 stock_product_short_name 参数。</p></div><t-link theme="primary" hover="underline" :href="adminPage('notice_send.htm')" target="_blank" rel="noopener noreferrer">关联通知接口与模板 <t-icon name="jump"></t-icon></t-link></div>
+              <div class="common-header"><div><p class="com-first-title">渠道配置总览</p><p class="second-text-color">只检查已保存的接口、模板和开关，不发送测试。客户联系方式及接收设置在实际发送前另行检查。</p></div><t-button variant="outline" :loading="readinessLoading" @click="refreshReadiness">刷新渠道状态</t-button></div>
+              <t-table row-key="key" :data="channelOverview" :columns="[{colKey:'label',title:'通知渠道',width:148},{colKey:'state',title:'配置状态',width:128},{colKey:'summary',title:'说明',minWidth:440,ellipsis:true}]" size="small" class="mb24"><template #state="{row}"><t-tag :theme="row.state==='ready'?'success':row.state==='attention'?'warning':'default'" variant="light">{{readinessLabel(row.state)}}</t-tag></template><template #summary="{row}"><t-tooltip :content="readinessTip(row) || row.summary"><span>{{row.summary}}</span></t-tooltip></template></t-table>
+              <p class="second-text-color">{{smsUsage.day}} 全站短信预计额度占用 {{smsUsage.reserved || 0}} / {{smsUsage.limit || 0}} 条，包含发送中的预留及结果未知；实际计费以服务商为准。</p>
+              <t-table row-key="action" :data="templates" :columns="templateColumns" hover>
+                <template #email="{row}"><t-link theme="primary" hover="underline" :href="adminPage('notice_email_template_update.htm?id='+row.email_template)" target="_blank" rel="noopener noreferrer">编辑邮件模板 #{{row.email_template}}</t-link></template>
+                <template #sms="{row}"><t-link v-if="row.sms_name" theme="primary" hover="underline" :href="smsTemplatePage(row.sms_name)" target="_blank" rel="noopener noreferrer">国内短信模板 #{{row.sms_template}}</t-link><span v-else class="third-text-color">尚未关联接口</span></template>
+                <template #sms_global="{row}"><t-link v-if="row.sms_global_name" theme="primary" hover="underline" :href="smsTemplatePage(row.sms_global_name)" target="_blank" rel="noopener noreferrer">国际短信模板 #{{row.sms_global_template}}</t-link><span v-else class="third-text-color">尚未关联接口</span></template>
+              </t-table>
+              <t-collapse class="mb24"><t-collapse-panel value="parameters" header="可用模板参数"><p class="second-text-color">邮件引用格式：{参数名}；短信引用格式：@var(参数名)。</p><t-table row-key="key" :data="parameterRows" :columns="parameterColumns" size="small"><template #key="{row}"><code>{{row.key}}</code></template></t-table></t-collapse-panel></t-collapse>
+            </t-tab-panel>
+            <t-tab-panel value="groups" label="商家群 Webhook" :destroy-on-hide="false">
+              <div class="common-header"><div><p class="com-first-title">商家群接收地址</p><p class="second-text-color">仅后台可配置。按群合并商品，不包含客户资料，不结束个人订阅。</p></div><t-button @click="openEndpoint()">新增群接收地址</t-button></div>
+              <t-table row-key="id" :data="endpoints" :columns="endpointColumns" hover><template #kind="{row}">{{kind(row.kind)}}</template><template #threshold="{row}"><span :title="'库存超过 '+row.threshold+' 件，即至少 '+(Number(row.threshold)+1)+' 件'">&gt; {{row.threshold}} 件</span></template><template #product_count="{row}">{{row.product_ids.length}}</template><template #enabled="{row}"><t-tag :theme="row.enabled?'success':'default'" variant="light">{{row.enabled?'启用':'停用'}}</t-tag></template><template #latest_result="{row}"><span :title="row.latest_delivery?status(row.latest_delivery.status):'尚无通知记录'">{{row.latest_delivery?tableStatus(row.latest_delivery.status):'尚无通知'}}</span></template><template #latest_at="{row}">{{time(row.latest_delivery && row.latest_delivery.at)}}</template><template #op="{row}"><t-button v-if="allowed('log') && row.latest_delivery" variant="text" :disabled="busy" @click="showEndpointRecords(row)">记录</t-button><t-button variant="text" @click="openEndpoint(row)">修改</t-button><t-button variant="text" :disabled="busy || !row.enabled" @click="testEndpoint(row)">测试</t-button><t-button variant="text" :disabled="busy" @click="deleteEndpoint(row)">删除</t-button></template></t-table>
+            </t-tab-panel>
+            <t-tab-panel value="personal" label="个人 Webhook" :destroy-on-hide="false">
+              <div class="common-header"><div><p class="com-first-title">个人地址管理</p><p class="second-text-color">按客户编号查询脱敏地址。商家禁用后，客户不能重新启用；恢复不会补发旧任务。</p></div></div>
+              <div class="mb24"><t-space :size="12" :break-line="true"><t-input v-model="personalClient" placeholder="客户编号" aria-label="客户编号" clearable @enter="loadPersonalEndpoints"></t-input><t-button :loading="busy" @click="loadPersonalEndpoints">查询个人地址</t-button></t-space></div>
+              <t-table row-key="id" :data="personalEndpoints" :columns="personalColumns" hover><template #kind="{row}">{{kind(row.kind)}}</template><template #updated="{row}">{{time(row.updated_at)}}</template><template #enabled="{row}"><t-tag :theme="row.enabled?'success':'default'" variant="light">{{row.admin_disabled?'商家禁用':row.enabled?'启用':'客户停用'}}</t-tag></template><template #op="{row}"><t-button v-if="row.admin_disabled" variant="text" :disabled="busy" @click="enablePersonal(row)">恢复启用</t-button><t-button v-else variant="text" :disabled="busy" @click="disablePersonal(row)">禁用地址</t-button></template></t-table>
+            </t-tab-panel>
+          </t-tabs>
+          <template v-if="settingsTab==='general' || settingsTab==='rules'">
+            <t-divider></t-divider>
+            <t-alert v-if="settingsConflict" theme="warning" message="设置已在其他页面更新，当前草稿已保留。请记下修改后重新读取最新设置。" class="mb24"></t-alert>
+            <div class="common-header"><t-space :size="12" :break-line="true"><t-tag v-if="settingsDirty" theme="warning" variant="light">有未保存的修改</t-tag><span class="second-text-color">基础设置与通知规则一并保存。</span></t-space><t-space :size="12"><t-button variant="outline" :disabled="busy || settingsLoading" @click="reloadSettings">重新读取设置</t-button><t-button theme="primary" :loading="busy" :disabled="settingsLoading || settingsConflict" @click="saveSettings">保存设置</t-button></t-space></div>
+          </template>
+          <t-divider></t-divider>
+          <t-space :size="24" :break-line="true"><span class="third-text-color">最近定时检查：{{time(lastCron)}}</span><span class="third-text-color">作者 Cr · QQ 793305720 · 交流群 603107399</span></t-space>
+        </t-tab-panel>
+      </t-tabs>
+      <t-dialog :header="productPreviewEnabled?'确认开放所选商品':'确认关闭所选商品'" :visible.sync="productConfirmVisible" width="800px" :close-on-overlay-click="false" :confirm-btn="{content:'确认'+(productPreviewEnabled?'开放':'关闭'),disabled:!productPreview || productPreviewLoading,loading:busy}" :cancel-btn="{content:'返回',disabled:busy}" @confirm="confirmProducts">
+        <t-loading v-if="productPreviewLoading" text="正在读取影响范围…"></t-loading><t-alert v-if="productPreviewError" theme="error" :message="productPreviewError"></t-alert><template v-if="productPreview">
+          <p>已选择 {{productPreview.count}} 个商品，将修改 {{productPreview.changed}} 个，{{productPreview.unchanged}} 个开放状态不变。</p><p class="second-text-color">涉及 {{productPreview.subscriptions}} 份有效订阅、{{productPreview.clients}} 位客户，当前有 {{productPreview.pending_items}} 项待发提醒。</p>
+          <t-alert :theme="productPreview.enabled?'info':'warning'" :message="productPreview.enabled?'首次或重新开放只建立库存基线，不推送当前已有库存。':'关闭后相关待发提醒将停止，订阅与历史记录保留；已经开始发送的消息可能无法撤回。'"></t-alert>
+          <t-table row-key="id" :data="productPreview.products" :columns="previewColumns" :max-height="320">
+            <template #name="{row}"><t-link theme="primary" :href="productDetailPage(row.id)" target="_blank" rel="noopener noreferrer">{{row.name}}</t-link></template><template #current="{row}">{{row.enabled?'已开放':'未开放'}}</template><template #change="{row}">{{row.changed?(productPreview.enabled?'开放订阅':'关闭订阅'):'状态不变'}}</template>
+          </t-table>
+        </template>
+      </t-dialog>
+      <t-dialog header="未通知原因与处理进度" :visible.sync="diagnosisVisible" width="90%" :footer="false">
+        <t-loading v-if="diagnosisLoading" text="正在检查…"></t-loading><t-alert v-if="diagnosisError" theme="error" :message="diagnosisError"></t-alert><template v-if="diagnosis">
+          <t-alert :theme="diagnosis.theme" :message="diagnosis.summary"></t-alert><p><t-link v-if="diagnosis.product_exists" theme="primary" :href="productDetailPage(diagnosis.product_id)" target="_blank" rel="noopener noreferrer">#{{diagnosis.product_id}} {{diagnosis.product_name}}</t-link><span v-else>#{{diagnosis.product_id}} {{diagnosis.product_name}}（已删除）</span> · {{status(diagnosis.status)}}</p>
+          <p>当前库存：{{diagnosis.quantity===undefined?(diagnosis.inventory_reason || '暂不可确认'):diagnosis.quantity+' 件'}} · 提醒门槛：超过 {{diagnosis.threshold}} 件</p><p class="second-text-color">最近商品检查 {{time(diagnosis.last_checked_at)}} · 最近个人渠道受理 {{time(diagnosis.last_notified_at)}}<span v-if="diagnosis.cooldown_until>diagnosis.checked_at"> · 冷却至 {{time(diagnosis.cooldown_until)}}</span></p>
+          <t-table row-key="key" :data="diagnosis.channels" :columns="diagnosisColumns">
+            <template #channel="{row}">{{channel(row.channel)}}</template><template #endpoint_name="{row}">{{row.endpoint_name || '—'}}</template><template #available="{row}">{{row.available?'可用':row.availability_reason}}</template><template #progress="{row}"><span :title="status(row.status)">{{tableStatus(row.status)}}</span></template><template #reason="{row}">{{row.reason || '—'}}</template><template #due="{row}">{{time(row.due_at)}}</template>
+          </t-table><p class="third-text-color">这是当前条件与已有任务的只读检查，不会补发消息；实际发送前会再次核对库存、订阅和渠道。</p>
+        </template>
+      </t-dialog>
+      <t-dialog header="操作日志详情" :visible.sync="auditVisible" :footer="false" width="720px"><template v-if="auditDetail"><p>{{auditDetail.label}} · {{time(auditDetail.created_at)}}</p><p>{{auditSummary(auditDetail)}}</p><p v-if="auditDetail.client_id"><t-link theme="primary" :href="clientDetailPage(auditDetail.client_id)" target="_blank" rel="noopener noreferrer">客户 #{{auditDetail.client_id}}</t-link></p><t-table v-if="auditDetail.detail.product_ids || auditDetail.detail.product_id" row-key="id" :data="auditDetail.products" :columns="[{colKey:'id',title:'涉及商品',minWidth:240,ellipsis:true}]" :max-height="320" size="small"><template #id="{row}"><t-link v-if="row.product_exists" theme="primary" :href="productDetailPage(row.id)" target="_blank" rel="noopener noreferrer">商品 #{{row.id}}</t-link><span v-else>商品 #{{row.id}}（已删除）</span></template></t-table><t-table v-if="auditDetail.detail.changes" row-key="key" :data="auditDetail.detail.changes.map(key=>({key:key,label:auditSettingLabels[key] || key}))" :columns="[{colKey:'key',title:'配置键',width:240,ellipsis:true},{colKey:'label',title:'设置项',minWidth:320,ellipsis:true}]" :max-height="320" size="small"></t-table><p v-if="auditDetail.detail.status">测试结果：{{status(auditDetail.detail.status)}}</p><p v-if="auditDetail.detail.outcome">人工核对：{{reviewLabel(auditDetail.detail.outcome)}} · {{auditDetail.detail.note}}</p><p v-if="auditDetail.detail.scope">地址范围：{{auditDetail.detail.scope==='group'?'商家群':'个人地址'}}</p></template></t-dialog>
+      <t-dialog header="商家群 Webhook" :visible.sync="endpointVisible" :footer="false" width="650" :close-on-overlay-click="false">
+        <t-form :data="endpointForm" label-align="top" @submit="saveEndpoint">
+          <t-row :gutter="[24,24]">
+            <t-col :xs="12" :sm="6"><t-form-item label="名称"><t-input v-model="endpointForm.name" :maxlength="100"></t-input></t-form-item></t-col>
+            <t-col :xs="12" :sm="6"><t-form-item label="类型"><t-select v-model="endpointForm.kind" :options="[{label:'企业微信机器人',value:'wecom'},{label:'钉钉机器人',value:'dingtalk'},{label:'通用 JSON',value:'json'}]"></t-select></t-form-item></t-col>
+            <t-col :xs="12"><t-form-item :label="endpointForm.id?'新的 HTTPS 地址（留空保留）':'HTTPS 地址'"><t-input v-model="endpointForm.url" placeholder="https://" autocomplete="off"></t-input></t-form-item></t-col>
+            <t-col :xs="12"><t-form-item label="签名密钥（可选，留空保留）"><t-input v-model="endpointForm.secret" type="password" autocomplete="new-password"></t-input><template v-if="endpointForm.id" #help><t-checkbox v-model="endpointForm.clear_secret">清除已有密钥</t-checkbox></template></t-form-item></t-col>
+            <t-col :xs="12"><t-form-item label="推送商品"><t-select v-model="endpointForm.product_ids" multiple filterable :options="productOptions" @search="searchOptions"></t-select></t-form-item></t-col>
+            <t-col :xs="12" :sm="6"><t-form-item label="库存超过多少件时推送" help="建议设为 3 及以上，减少临时库存提醒。"><t-input-number v-model="endpointForm.threshold" :min="0" :max="100000000" :decimal-places="0" suffix="件" style="width:100%"></t-input-number></t-form-item></t-col>
+            <t-col :xs="12" :sm="6"><t-form-item label="启用地址"><t-space><t-switch v-model="endpointForm.enabled" :custom-value="[1,0]"></t-switch><span class="second-text-color">{{endpointForm.enabled?'启用':'停用'}}</span></t-space></t-form-item></t-col>
+          </t-row>
+          <p class="third-text-color">域名未就绪可先停用保存，启用时再检查。保存不发测试消息；配置时已满足门槛的库存不会立即群发。</p><t-alert v-if="error" theme="error" :message="error" role="alert"></t-alert><div class="com-f-btn"><t-button theme="primary" type="submit" :loading="busy">保存</t-button><t-button variant="outline" @click="endpointVisible=false">取消</t-button></div>
+        </t-form>
+      </t-dialog>
+      <t-dialog header="登记人工核对结果" :visible.sync="reviewVisible" :footer="false" width="600px" :close-on-overlay-click="false"><t-alert theme="info" message="仅登记核对依据，保留原始未知结果，不触发重发或释放短信额度。"></t-alert><t-form label-align="top" @submit="saveReview"><t-form-item label="核对结果"><t-select v-model="reviewForm.outcome" :options="[{label:'仍无法确认',value:'unresolved'},{label:'已确认受理',value:'accepted'},{label:'确认未受理',value:'not_accepted'}]"></t-select></t-form-item><t-form-item label="核对依据"><t-textarea v-model="reviewForm.note" :maxlength="500" placeholder="填写接收端事件编号、核对时间和结论；勿填写密钥或完整联系方式。"></t-textarea></t-form-item><t-space><t-button type="submit" :loading="busy">保存核对记录</t-button><t-button variant="outline" @click="reviewVisible=false">返回</t-button></t-space></t-form></t-dialog>
+      <t-dialog header="通知详情" :visible.sync="recordVisible" :footer="false" width="90%"><template v-if="recordDetail">
+        <p>{{event(recordDetail.event_type)}} · {{status(recordDetail.status)}} · {{time(recordDetail.created_at)}}</p><p v-if="recordDetail.client_id"><t-link theme="primary" hover="underline" :href="clientDetailPage(recordDetail.client_id)" target="_blank" rel="noopener noreferrer">客户 #{{recordDetail.client_id}}</t-link></p>
+        <p>接收地址：{{receiver(recordDetail)}} · {{channel(recordDetail.channel)}}</p><p>事件编号：{{recordDetail.event_id}}</p><p>尝试 {{recordDetail.attempts}} 次<span v-if="recordDetail.sms_units"> · 短信预计计费 {{recordDetail.sms_units}} 条</span></p><p>{{recordDetail.reason}}</p><t-space v-if="recordDetail.channel!=='webhook'" class="mb24"><t-link :href="nativeLogPage(recordDetail)" target="_blank" rel="noopener noreferrer">查看原生发送日志</t-link><span v-if="recordDetail.task_id" class="second-text-color">关联 V10 任务 #{{recordDetail.task_id}}</span></t-space><t-alert v-if="recordDetail.review" theme="info" :message="reviewLabel(recordDetail.review.outcome)+' · '+time(recordDetail.review.updated_at)+' · 管理员 #'+recordDetail.review.admin_id+'：'+recordDetail.review.note"></t-alert>
+        <h4>商品清单（{{recordDetail.snapshot.length}} 个）</h4><t-table row-key="id" :data="recordDetail.snapshot" :columns="recordSnapshotColumns" :max-height="360" size="small"><template #id="{row}">#{{row.id}}</template><template #name="{row}"><t-link v-if="row.product_exists" theme="primary" hover="underline" :href="productDetailPage(row.id)" target="_blank" rel="noopener noreferrer">{{row.name}}</t-link><span v-else>{{row.name}}（已删除）</span></template><template #qty="{row}">{{row.qty===undefined?'—':row.qty+' 件'}}</template></t-table>
+        <h4>商品处理记录</h4><t-table row-key="product_id" :data="recordDetail.items" :columns="itemColumns" :max-height="320" size="small"><template #product_id="{row}"><t-link v-if="row.product_exists" theme="primary" :href="productDetailPage(row.product_id)" target="_blank" rel="noopener noreferrer">#{{row.product_id}}</t-link><span v-else>#{{row.product_id}}（已删除）</span></template><template #channel="{row}">{{channel(row.channel)}}</template><template #source="{row}">{{row.source==='manual'?'人工群发':'自动通知'}}</template><template #status="{row}"><span :title="status(row.status)">{{tableStatus(row.status)}}</span></template><template #reason="{row}">{{row.reason || '—'}}</template></t-table>
+        <h4>发送尝试记录</h4><t-table row-key="attempt" :data="recordDetail.attempt_log" :columns="recordAttemptColumns" :max-height="280" size="small"><template #status="{row}"><span :title="status(row.status)">{{tableStatus(row.status)}}</span></template><template #sms_units="{row}">{{recordDetail.channel==='sms'?row.sms_units:'—'}}</template><template #created="{row}">{{time(row.created_at)}}</template><template #reason="{row}">{{row.reason || '—'}}</template></t-table>
+      </template></t-dialog>
+    </t-card>
+  </com-config>
+</div>
+<style>@media(max-width:767px){.stock-subscribe-admin .stock-notification-rules{max-width:calc(100vw - 64px);}}</style>
+<script src="/plugins/addon/cr_stock_subscribe/template/shared.js?v=0.1.0&rev=20261103h"></script>
+<script src="/plugins/addon/cr_stock_subscribe/template/admin/app.js?v=0.1.0&rev=20261103h"></script>

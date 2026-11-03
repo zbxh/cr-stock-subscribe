@@ -1,0 +1,109 @@
+<link rel="stylesheet" href="/plugins/addon/cr_stock_subscribe/template/clientarea/style.css?v=0.1.0&rev=20261103d">
+</head><body>
+<div id="mainLoading"><div class="ddr ddr1"></div><div class="ddr ddr2"></div></div>
+<div class="template css-member" v-cloak style="display:none">
+  {if condition="$public_themes == 'pc/cloud'"}
+  <div class="cloud-shell"><aside-menu></aside-menu><div class="cloud-shell__body"><top-menu></top-menu><main class="cloud-shell__content">
+  {else /}
+  <el-container><aside-menu></aside-menu><el-container><top-menu></top-menu><el-main>
+  {/if}
+  <div class="css-content main-card">
+    <div class="css-heading"><div><h1>补货订阅</h1><p>按商品总库存提醒，不代表特定地区、线路或机型有货。库存随时变化，以下单页面为准。</p></div><el-button type="primary" :disabled="!entry.enabled" @click="add">新增订阅</el-button></div>
+    <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon role="alert"></el-alert>
+    <el-alert v-if="notice" :title="notice" type="success" show-icon @close="notice=''" role="status"></el-alert>
+    <el-alert v-if="ready && !entry.enabled" title="商家暂未开放补货订阅，已有记录仍可查看。" type="info" :closable="false"></el-alert>
+    <el-tabs v-model="tab" @tab-click="tabChanged">
+      <el-tab-pane label="我的订阅" name="subscriptions">
+        <p class="css-help">有效订阅最多 {{entry.max_subscriptions || '—'}} 个，有效期 {{entry.valid_days || '—'}} 天。邮件、短信和 Webhook 可同时选择。商品隐藏或删除时也会通过所选渠道提醒。</p>
+        <div class="css-toolbar css-filters">
+          <el-input v-model="subscriptionFilter.keywords" placeholder="搜索商品名称或订阅编号" clearable @keydown.enter.native.prevent="searchSubscriptions"></el-input>
+          <el-button class="css-filter-toggle" :aria-expanded="String(subscriptionFiltersOpen)" aria-controls="stock-subscription-filters" @click="subscriptionFiltersOpen=!subscriptionFiltersOpen">{{subscriptionFiltersOpen?'收起筛选':'展开筛选'}}{{advancedCount(subscriptionFilter)?'（'+advancedCount(subscriptionFilter)+'）':''}}</el-button>
+          <div id="stock-subscription-filters" class="css-filter-options" :class="{'is-open':subscriptionFiltersOpen}">
+          <el-select v-model="subscriptionFilter.status" aria-label="我的订阅状态"><el-option v-for="o in subscriptionStatuses" :key="o.value" :label="o.label" :value="o.value"></el-option></el-select>
+          <el-select v-model="subscriptionFilter.channel" aria-label="我的订阅渠道"><el-option v-for="o in channelOptions" :key="o.value" :label="o.label" :value="o.value"></el-option></el-select>
+          <el-select v-model="subscriptionFilter.mode" aria-label="我的提醒模式"><el-option v-for="o in modeOptions" :key="o.value" :label="o.label" :value="o.value"></el-option></el-select>
+          <el-date-picker v-model="subscriptionFilter.dates" type="daterange" value-format="yyyy-MM-dd" start-placeholder="订阅开始日期" end-placeholder="订阅结束日期" range-separator="至" :clearable="true"></el-date-picker>
+          </div>
+          <el-button :loading="loading" @click="searchSubscriptions">查询订阅</el-button><el-button :disabled="loading" @click="resetSubscriptions">重置筛选</el-button>
+        </div>
+        <el-table ref="subscriptionTable" :data="subscriptions" v-loading="loading" empty-text="暂无符合条件的订阅，可重置筛选或新增订阅。" row-key="id">
+          <el-table-column prop="id" label="编号" width="68"></el-table-column>
+          <el-table-column prop="product_name" label="商品名称" min-width="300" show-overflow-tooltip></el-table-column>
+          <el-table-column label="商品状态" width="96"><template slot-scope="s">{{productState(s.row)}}</template></el-table-column>
+          <el-table-column label="库存门槛" width="112" show-overflow-tooltip><template slot-scope="s"><span :title="'库存超过 '+s.row.threshold+' 件，即至少 '+(Number(s.row.threshold)+1)+' 件'">&gt; {{s.row.threshold}} 件</span></template></el-table-column>
+          <el-table-column label="通知渠道" :width="subscriptionChannelWidth" show-overflow-tooltip><template slot-scope="s">{{s.row.channels.map(channel).join('、')}}</template></el-table-column>
+          <el-table-column label="提醒模式" width="100"><template slot-scope="s">{{s.row.mode==='once'?'提醒一次':'持续订阅'}}</template></el-table-column>
+          <el-table-column label="订阅状态" width="100" show-overflow-tooltip><template slot-scope="s"><span :title="status(s.row.status)">{{tableStatus(s.row.status)}}</span></template></el-table-column>
+          <el-table-column v-if="hasSubscriptionProgress" label="通知进度" min-width="160" show-overflow-tooltip><template slot-scope="s"><span :title="progressTip(s.row)">{{s.row.notification_wait || '—'}}</span></template></el-table-column>
+          <el-table-column v-if="subscriptions.some(row=>row.deferred_until)" label="复核不早于" width="178"><template slot-scope="s">{{time(s.row.deferred_until)}}</template></el-table-column>
+          <el-table-column label="有效期至" width="178"><template slot-scope="s">{{time(s.row.expires_at)}}</template></el-table-column>
+          <el-table-column label="操作" class-name="css-table-actions" :width="subscriptionOperationWidth"><template slot-scope="s"><el-button type="text" :disabled="busy || !entry.enabled || s.row.product_delisted" @click="edit(s.row)">{{s.row.status==='active'?'修改':'重新订阅'}}</el-button><el-button v-if="s.row.status==='active' || s.row.pending_count>0" type="text" :disabled="busy" @click="cancel(s.row)">{{s.row.status==='active'?'退订':'停止待发提醒'}}</el-button></template></el-table-column>
+        </el-table>
+        <el-pagination v-if="subscriptionTotal" layout="prev,pager,next,total" :page-size="20" :current-page="subscriptionPage" :total="subscriptionTotal" @current-change="loadSubscriptions"></el-pagination>
+      </el-tab-pane>
+      <el-tab-pane label="新增／修改订阅" name="new">
+        <el-form label-position="top" @submit.native.prevent="save">
+          <template v-if="!editing">
+            <div class="css-toolbar"><el-input v-model="keywords" placeholder="搜索商品名称" clearable @keydown.enter.native.prevent="loadProducts(1)"></el-input><el-select v-model="groupId" placeholder="全部分类" clearable @change="loadProducts(1)"><el-option v-for="g in groups" :key="g.id" :value="g.id" :label="g.name"></el-option></el-select><el-button :loading="loading" @click="loadProducts(1)">搜索</el-button></div>
+            <el-table ref="products" :data="products" v-loading="loading" empty-text="没有符合条件的可订阅商品。" row-key="id" @selection-change="selectedProducts">
+              <el-table-column type="selection" width="45" :reserve-selection="true" :selectable="selectable"></el-table-column>
+              <el-table-column prop="id" label="编号" width="76"></el-table-column><el-table-column prop="name" label="商品名称" min-width="340" show-overflow-tooltip></el-table-column>
+              <el-table-column v-if="entry.show_price" prop="price" label="当前价格" width="156" show-overflow-tooltip></el-table-column><el-table-column label="当前库存" width="156" show-overflow-tooltip><template slot-scope="s">{{s.row.inventory_state==='known'?(s.row.qty===undefined?'已启用库存控制':s.row.qty+' 件'):s.row.inventory_reason}}</template></el-table-column><el-table-column label="操作" class-name="css-table-actions" width="108"><template slot-scope="s"><a :href="s.row.purchase_url" target="_blank" rel="noopener noreferrer">查看商品</a></template></el-table-column>
+            </el-table>
+            <el-pagination v-if="productTotal" layout="prev,pager,next,total" :page-size="20" :current-page="productPage" :total="productTotal" @current-change="loadProducts"></el-pagination>
+            <p class="css-help">已选择 {{draft.product_ids.length}} 个商品；已经订阅的商品将更新设置。<span v-if="entry.show_price">价格以当前下单页面为准。</span></p>
+          </template>
+          <el-alert v-else :title="'正在设置：'+editing.product_name" type="info" :closable="false"></el-alert>
+          <el-form-item label="库存提醒门槛"><el-input-number v-model="draft.threshold" :min="0" :max="100000000" :precision="0"></el-input-number><p class="css-help">库存超过 {{draft.threshold}} 件时提醒，即至少 {{Number(draft.threshold)+1}} 件。建议设置为 3 及以上，减少回收站资源尚未释放造成的提醒。</p></el-form-item>
+          <el-form-item label="通知渠道"><el-checkbox-group v-model="draft.channels"><div v-for="c in entry.channels" :key="c.value" class="css-channel"><el-checkbox :label="c.value" :disabled="!c.enabled">{{c.label}}</el-checkbox><small v-if="!c.enabled">{{c.reason}}</small></div></el-checkbox-group><p v-if="!availableChannels.length" class="css-help">暂无可用通知渠道。请先在<a href="/account.htm" target="_blank" rel="noopener noreferrer">账户设置</a>绑定联系方式并开启接收通知，或联系商家。</p></el-form-item>
+          <el-form-item v-if="draft.channels.includes('webhook')" label="个人 Webhook 接收地址"><el-select v-model="draft.endpoint_ids" multiple placeholder="选择本人接收地址"><el-option v-for="e in endpoints" :key="e.id" :value="e.id" :label="e.name" :disabled="!e.enabled"></el-option></el-select><el-button type="text" @click="tab='endpoints'">管理个人 Webhook</el-button></el-form-item>
+          <el-form-item label="提醒模式"><el-radio-group v-model="draft.mode"><el-radio label="once">提醒一次</el-radio><el-radio label="continuous">持续订阅</el-radio></el-radio-group><p class="css-help">持续订阅在同一轮补货中仅提醒一次，再次售罄、补货后继续提醒。冷却期间的补货会在冷却结束后自动复核，无需重新订阅或修改库存。通知不预留库存。</p></el-form-item>
+          <el-button type="primary" native-type="submit" :loading="busy" :disabled="!entry.enabled || !availableChannels.length">保存订阅</el-button><el-button @click="tab='subscriptions'">返回</el-button>
+        </el-form>
+      </el-tab-pane>
+      <el-tab-pane label="通知记录" name="records">
+        <el-alert v-if="notificationEvent" title="正在查看本次通知的完整清单" type="info" :closable="false" show-icon></el-alert><el-button v-if="notificationEvent" type="text" @click="resetRecords">查看全部通知记录</el-button>
+        <p class="css-help">“接口已受理”表示发送接口返回成功，不代表已阅读或保证送达。</p>
+        <div class="css-toolbar css-filters">
+          <el-input v-model="recordFilter.keywords" placeholder="搜索商品名称或事件编号" clearable @keydown.enter.native.prevent="searchRecords"></el-input>
+          <el-button class="css-filter-toggle" :aria-expanded="String(recordFiltersOpen)" aria-controls="stock-record-filters" @click="recordFiltersOpen=!recordFiltersOpen">{{recordFiltersOpen?'收起筛选':'展开筛选'}}{{advancedCount(recordFilter)?'（'+advancedCount(recordFilter)+'）':''}}</el-button>
+          <div id="stock-record-filters" class="css-filter-options" :class="{'is-open':recordFiltersOpen}">
+          <el-select v-model="recordFilter.archive" aria-label="我的历史归档范围"><el-option label="全部历史通知" value="all"></el-option><el-option label="未归档通知" value="current"></el-option><el-option label="已归档通知" value="archived"></el-option></el-select>
+          <el-select v-model="recordFilter.status" aria-label="我的发送状态"><el-option v-for="o in deliveryStatuses" :key="o.value" :label="o.label" :value="o.value"></el-option></el-select>
+          <el-select v-model="recordFilter.channel" aria-label="我的通知渠道"><el-option v-for="o in channelOptions" :key="o.value" :label="o.label" :value="o.value"></el-option></el-select>
+          <el-select v-model="recordFilter.event_type" aria-label="我的通知类型"><el-option v-for="o in eventOptions" :key="o.value" :label="o.label" :value="o.value"></el-option></el-select>
+          <el-select v-model="recordFilter.source" aria-label="我的通知来源"><el-option v-for="o in sourceOptions" :key="o.value" :label="o.label" :value="o.value"></el-option></el-select>
+          <el-input v-model="recordFilter.product_id" placeholder="通知商品编号" clearable @keydown.enter.native.prevent="searchRecords"></el-input>
+          <el-date-picker v-model="recordFilter.dates" type="daterange" value-format="yyyy-MM-dd" start-placeholder="通知开始日期" end-placeholder="通知结束日期" range-separator="至" :clearable="true"></el-date-picker>
+          </div>
+          <el-button :loading="loading" @click="searchRecords">查询通知</el-button><el-button :disabled="loading" @click="resetRecords">重置通知筛选</el-button>
+        </div>
+        <el-table ref="recordTable" :data="records" v-loading="loading" empty-text="暂无符合条件的通知记录。" row-key="id">
+          <el-table-column type="expand" width="44"><template slot-scope="s"><div class="css-record-detail">
+            <p class="css-help">事件编号：{{s.row.event_id}} · {{status(s.row.status)}}</p><p v-if="s.row.reason" class="css-help">{{s.row.reason}}</p>
+            <h4>商品清单（{{s.row.snapshot.length}} 个）</h4><el-table :data="s.row.snapshot" size="small" row-key="id" max-height="360" class="css-detail-table"><el-table-column prop="id" label="商品编号" width="100"></el-table-column><el-table-column prop="name" label="商品名称" min-width="340" show-overflow-tooltip><template slot-scope="p"><span v-if="s.row.event_type==='delisted'">{{p.row.name}}</span><a v-else-if="p.row.product_exists" :href="'/cart/goods.htm?id='+p.row.id" target="_blank" rel="noopener noreferrer">{{p.row.name}}</a><span v-else>{{p.row.name}}（已删除）</span></template></el-table-column><el-table-column v-if="s.row.snapshot.some(p=>p.qty!==undefined)" label="通知时库存" width="116"><template slot-scope="p">{{p.row.qty===undefined?'—':p.row.qty+' 件'}}</template></el-table-column></el-table>
+            <h4>发送尝试记录</h4><el-table :data="s.row.attempt_log" size="small" row-key="attempt" max-height="280" class="css-detail-table"><el-table-column prop="attempt" label="次数" width="72"></el-table-column><el-table-column label="发送状态" width="116" show-overflow-tooltip><template slot-scope="a"><span :title="status(a.row.status)">{{tableStatus(a.row.status)}}</span></template></el-table-column><el-table-column label="尝试时间" width="178"><template slot-scope="a">{{time(a.row.created_at)}}</template></el-table-column></el-table>
+          </div></template></el-table-column>
+          <el-table-column prop="id" label="编号" width="68"></el-table-column><el-table-column label="通知类型" width="108"><template slot-scope="s">{{event(s.row.event_type)}}</template></el-table-column>
+          <el-table-column label="商品摘要" min-width="300" show-overflow-tooltip><template slot-scope="s"><span :title="s.row.snapshot.map(p=>p.name).join('、')">{{productSummary(s.row)}}</span></template></el-table-column><el-table-column label="商品数" width="80" align="right"><template slot-scope="s">{{s.row.snapshot.length}}</template></el-table-column>
+          <el-table-column label="通知渠道" width="100"><template slot-scope="s">{{channel(s.row.channel)}}</template></el-table-column><el-table-column label="接收地址（已脱敏）" min-width="240" show-overflow-tooltip><template slot-scope="s">{{receiver(s.row)}}</template></el-table-column>
+          <el-table-column label="发送状态" width="116" show-overflow-tooltip><template slot-scope="s"><span :title="status(s.row.status)">{{tableStatus(s.row.status)}}</span></template></el-table-column><el-table-column label="创建时间" width="178"><template slot-scope="s">{{time(s.row.created_at)}}</template></el-table-column>
+        </el-table><el-pagination v-if="recordTotal" layout="prev,pager,next,total" :page-size="20" :total="recordTotal" :current-page="recordPage" @current-change="loadRecords"></el-pagination>
+      </el-tab-pane>
+      <el-tab-pane label="个人 Webhook" name="endpoints">
+        <p class="css-help">只接收本人订阅的商品。商家群推送由商家后台设置。</p><el-button v-if="editing || draft.product_ids.length" type="text" @click="tab='new'">返回订阅设置</el-button><el-button type="primary" :disabled="!webhookAllowed" @click="openEndpoint()">新增个人地址</el-button>
+        <el-table ref="endpointTable" :data="endpoints" empty-text="尚未绑定个人 Webhook 地址。"><el-table-column prop="name" label="名称" min-width="220" show-overflow-tooltip></el-table-column><el-table-column label="类型" width="112"><template slot-scope="s">{{kind(s.row.kind)}}</template></el-table-column><el-table-column prop="url_hint" label="地址（已脱敏）" min-width="320" show-overflow-tooltip></el-table-column><el-table-column label="状态" width="80"><template slot-scope="s">{{s.row.admin_disabled?'商家禁用':s.row.enabled?'启用':'自行停用'}}</template></el-table-column><el-table-column label="更新时间" width="178"><template slot-scope="s">{{time(s.row.updated_at)}}</template></el-table-column><el-table-column label="操作" class-name="css-table-actions" width="176"><template slot-scope="s"><el-button type="text" :disabled="busy || s.row.admin_disabled" @click="openEndpoint(s.row)">修改</el-button><el-button type="text" :disabled="busy || !webhookAllowed || !s.row.enabled" @click="testEndpoint(s.row)">测试</el-button><el-button type="text" :disabled="busy || s.row.admin_disabled" @click="deleteEndpoint(s.row)">删除</el-button></template></el-table-column></el-table>
+      </el-tab-pane>
+    </el-tabs>
+    <el-dialog title="个人 Webhook" custom-class="cr-stock-endpoint-dialog" :visible.sync="endpointVisible" :close-on-click-modal="false" width="560px" append-to-body>
+      <el-form label-position="top" @submit.native.prevent="saveEndpoint"><el-form-item label="名称" for="stock-endpoint-name"><el-input id="stock-endpoint-name" v-model="endpointForm.name" maxlength="100"></el-input></el-form-item><el-form-item label="类型" for="stock-endpoint-kind"><el-select id="stock-endpoint-kind" v-model="endpointForm.kind"><el-option label="企业微信机器人" value="wecom"></el-option><el-option label="钉钉机器人" value="dingtalk"></el-option><el-option label="通用 JSON" value="json"></el-option></el-select></el-form-item><el-form-item for="stock-endpoint-url" :label="endpointForm.id?'新的 HTTPS 地址（留空保留）':'HTTPS 地址'"><el-input id="stock-endpoint-url" v-model="endpointForm.url" autocomplete="off" placeholder="https://" maxlength="2048"></el-input></el-form-item><el-form-item label="签名密钥（可选，留空保留）" for="stock-endpoint-secret"><el-input id="stock-endpoint-secret" v-model="endpointForm.secret" type="password" autocomplete="new-password" show-password></el-input><el-checkbox v-if="endpointForm.id" v-model="endpointForm.clear_secret">清除已有密钥</el-checkbox></el-form-item><el-checkbox v-model="endpointForm.enabled" :true-label="1" :false-label="0">启用地址</el-checkbox><p class="css-help">域名未就绪可先停用保存，启用时再检查。保存不发测试消息；仅改名称保留待发任务，更改接收或发送设置会停止旧任务。</p><el-alert v-if="error" :title="error" type="error" :closable="false" show-icon role="alert"></el-alert><el-button type="primary" native-type="submit" :loading="busy">保存</el-button><el-button @click="endpointVisible=false">取消</el-button></el-form>
+    </el-dialog>
+  </div>
+  {if condition="$public_themes == 'pc/cloud'"}
+  </main></div></div>
+  {else /}
+  </el-main></el-container></el-container>
+  {/if}
+</div>
+<script src="/plugins/addon/cr_stock_subscribe/template/shared.js?v=0.1.0&rev=20261103h"></script>
+<script src="/plugins/addon/cr_stock_subscribe/template/clientarea/app.js?v=0.1.0&rev=20261103f"></script>
