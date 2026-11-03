@@ -2,12 +2,12 @@
 
 # 补货订阅
 
-**面向魔方财务 V10 的商品补货与下架通知插件**
+**面向智简魔方 V10 业务系统的商品补货与下架通知插件**
 
 客户按库存门槛订阅，商家统一管理通知渠道、补货群发与发送频率。
 
 [![版本](https://img.shields.io/badge/version-0.1.0%20beta-orange)](https://github.com/zbxh/cr-stock-subscribe/releases/tag/v0.1.0)
-[![平台](https://img.shields.io/badge/platform-IDCsmart%20V10-blue)](#compatibility)
+[![智简魔方 V10 业务系统](https://img.shields.io/badge/platform-%E6%99%BA%E7%AE%80%E9%AD%94%E6%96%B9%20V10%20%E4%B8%9A%E5%8A%A1%E7%B3%BB%E7%BB%9F-blue)](#compatibility)
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-777bb4)](#compatibility)
 [![检查](https://github.com/zbxh/cr-stock-subscribe/actions/workflows/check.yml/badge.svg)](https://github.com/zbxh/cr-stock-subscribe/actions/workflows/check.yml)
 
@@ -152,7 +152,7 @@
 
 ## 兼容与运行环境
 
-面向魔方财务 **V10 10.7 系列**，使用系统原生插件、钩子和通知接口；具体已验证版本、主题及运行条件见 [兼容说明](docs/compatibility.md)。插件以 PHP 7.4 为运行基线，代码保持 PHP 7.4 语法兼容，较新 PHP 的语法检查与 V10 整站运行兼容分别记录。
+面向智简魔方 V10 业务系统 **10.7 系列**，使用系统原生插件、钩子和通知接口；具体已验证版本、主题及运行条件见 [兼容说明](docs/compatibility.md)。插件以 PHP 7.4 为运行基线，代码保持 PHP 7.4 语法兼容，较新 PHP 的语法检查与 V10 整站运行兼容分别记录。
 
 通知依赖站点既有定时任务、邮件／短信接口及客户接收设置。提醒依据商品总库存，不预留库存，也不代表某个地区、线路或机型一定可购买；接口受理状态不等同于客户最终收到或阅读。
 
