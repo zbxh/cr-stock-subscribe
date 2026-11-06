@@ -11,7 +11,7 @@ class IndexController extends PluginBaseController
 {
     private function client() : int { $id=(int)get_client_id(false); if (!$id) { throw new \DomainException('请先登录。'); } return $id; }
     public function entry() { return Store::response(function () { return (new Service())->entry($this->client()); }); }
-    public function products() { return Store::response(function () { Store::requireActive(); return (new Service())->products($this->request->param()); }); }
+    public function products() { return Store::response(function () { Store::requireActive(); return (new Service())->products($this->request->param(),false,$this->client()); }); }
     public function subscriptions() { return Store::response(function () { return (new Subscriptions())->listing($this->client(),$this->request->param()); }); }
     public function save() { return Store::response(function () { return (new Subscriptions())->save($this->client(),$this->request->param(),true); }); }
     public function cancel() { return Store::response(function () { (new Subscriptions())->cancel($this->client(),(int)$this->request->param('id')); return []; }); }

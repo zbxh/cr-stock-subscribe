@@ -1,4 +1,4 @@
-# 补货订阅 0.1.1
+# 补货订阅 0.1.2
 
 独立 V10 插件，标识 `CrStockSubscribe`。作者 Cr，QQ 793305720，交流群 603107399。
 
@@ -228,7 +228,7 @@ Webhook 域名解析使用服务器现有 DNS 配置和随包提供的 Net_DNS2 
 
 ## 项目与版本
 
-当前版本 0.1.1 为公开测试版。项目主页及配置说明：https://github.com/zbxh/cr-stock-subscribe 。请从 Releases 下载安装包及对应 SHA256；仓库自动生成的 Source code 不是商城安装包。
+当前版本 0.1.2 为公开测试版。项目主页及配置说明：https://github.com/zbxh/cr-stock-subscribe 。请从 Releases 下载安装包及对应 SHA256；仓库自动生成的 Source code 不是商城安装包。
 
 本项目免费提供，允许自由使用、商用、修改和分发，不设置额外使用限制。随附 Net_DNS2 保留其原有 BSD 版权与许可声明。
 

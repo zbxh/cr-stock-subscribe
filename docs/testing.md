@@ -11,7 +11,7 @@ python3 scripts/check.py
 php tests/security_test.php
 python3 tests/package_test.py
 python3 scripts/package.py --output /path/to/output
-python3 scripts/package.py --verify /path/to/output/CrStockSubscribe-0.1.1.zip
+python3 scripts/package.py --verify /path/to/output/CrStockSubscribe-0.1.2.zip
 ```
 
 非默认路径的运行时可通过 `PHP_BINARY`、`NODE_BINARY` 指定。`SOURCE_DATE_EPOCH` 可以固定 ZIP 时间戳，便于重建相同输入的包。已有安装包不会被自动覆盖。
@@ -45,3 +45,11 @@ python3 scripts/package.py --verify /path/to/output/CrStockSubscribe-0.1.1.zip
 两版 V10 集成环境分别验证了新安装不写入数据库主密钥、从真实 0.1.0 配置迁移、迁移失败回滚及重试、恢复密钥、保留自定义模板，以及升级前的 Webhook 任务继续发送且不重复。每版同时执行库存、合并、限速和并发等 175 项业务回归。公共安全脚本另有 42 项独立检查。
 
 全新数据库安装使用原版 V10 安装器和默认主题，另以浏览器检查后台插件安装、启用及设置；不把隔离表测试当作全新系统安装。验证使用合成账户与测试地址，私有环境及浏览器认证状态不进入仓库或安装包。
+
+## 0.1.2 问题回归
+
+V10 10.7.2 和 10.7.4 各执行 188 项业务检查，新增检查覆盖新旧商品混选保存、订阅版本冲突及整批回滚、父子分类及隐藏继承，以及订阅修改后旧合并投递的取消、重建、历史明细和去重。
+
+两个系统版本均从真实 0.1.0、0.1.1 源码安装后，通过 V10 原生升级流程验证到 0.1.2，保留配置、自定义模板和待发通知。最终 ZIP 另外验证原生解压、安装、队列发送及启停重装。
+
+浏览器按管理员与普通会员检查全部插件标签页、批量操作、记录、个人及商家 Webhook、权限、桌面与手机布局，并针对混选保存、父分类筛选、多页面冲突及原生登录回跳补做实际点击检查。通知接收使用模拟端，不向真实客户或商家群发送测试消息。

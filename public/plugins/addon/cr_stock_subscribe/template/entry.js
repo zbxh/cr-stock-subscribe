@@ -11,7 +11,7 @@
   if (!script.hasAttribute('data-stock-cart')) return;
   // Vue may replace this DOM while mounting the cart. Delegation survives it.
   document.addEventListener('click', function (e) { if (e.target.closest && e.target.closest('#cr-stock-subscribe-entry a')) clicked(e); });
-  var css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '/plugins/addon/cr_stock_subscribe/template/entry.css?v=0.1.1&rev=20261103c'; document.head.appendChild(css);
+  var css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '/plugins/addon/cr_stock_subscribe/template/entry.css?v=0.1.2&rev=20261103c'; document.head.appendChild(css);
   var frame = 0;
   function mount() {
     frame = 0;

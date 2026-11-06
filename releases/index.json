@@ -17,6 +17,15 @@
       "url": "https://github.com/zbxh/cr-stock-subscribe/releases/tag/v0.1.1",
       "package": "CrStockSubscribe-0.1.1.zip",
       "checksum": "CrStockSubscribe-0.1.1.zip.sha256"
+    },
+    {
+      "version": "0.1.2",
+      "tag": "v0.1.2",
+      "prerelease": true,
+      "date": "2026-11-06",
+      "url": "https://github.com/zbxh/cr-stock-subscribe/releases/tag/v0.1.2",
+      "package": "CrStockSubscribe-0.1.2.zip",
+      "checksum": "CrStockSubscribe-0.1.2.zip.sha256"
     }
   ]
 }

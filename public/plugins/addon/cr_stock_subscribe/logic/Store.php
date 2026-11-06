@@ -5,7 +5,7 @@ use think\facade\Db;
 
 final class Store
 {
-    const VERSION = '0.1.1';
+    const VERSION = '0.1.2';
     const PREFIX = 'addon_cr_stock_subscribe_';
 
     public static function table($name) { return Db::name(self::PREFIX . $name); }

@@ -15,34 +15,49 @@ class Service
         }
         return $data;
     }
-    public function products(array $input, bool $admin = false) : array
+    public function products(array $input, bool $admin = false, int $clientId = 0) : array
     {
         if ($admin && !empty($input['summary'])) { return (new Inspector())->health(); }
         if ($admin && !empty($input['preview'])) { return (new Inspector())->productPreview(Store::ids($input['product_ids']??[]),Store::number($input['enabled']??1,0,1,'开放状态')===1); }
         if ($admin && !empty($input['tree'])) { return $this->productCatalog(); }
         [$page,$limit]=Store::page($input);
-        $q=Db::name('product')->alias('p')->leftJoin(Store::PREFIX . 'product r','r.product_id=p.id')->leftJoin('product_group g','g.id=p.product_group_id')->leftJoin('product_group parent','parent.id=g.parent_id');
+        $allGroups=Db::name('product_group')->field('id,name,parent_id,hidden')->order('id')->select()->toArray();
+        $groups=$allGroups;
+        if (!$admin) {
+            $groupProducts=[];
+            foreach ($groups as $g) { $groupProducts[$g['id']]=['product_group_id'=>$g['id']]; }
+            $visibility=(new Availability())->readMany($groupProducts,$allGroups);
+            $groups=array_values(array_filter($groups,static function ($g) use ($visibility) { return $visibility[$g['id']]['state']==='listed'; }));
+        }
+        $q=Db::name('product')->alias('p')->leftJoin(Store::PREFIX . 'product r','r.product_id=p.id')->leftJoin('product_group g','g.id=p.product_group_id');
         $q->where('p.product_id',0);
-        if (!$admin) { $q->where('r.enabled',1)->where('p.hidden',0)->where('p.stock_control',1)->where('g.hidden',0)->where(function ($where) { $where->where('g.parent_id',0)->whereOr('parent.hidden',0); }); }
+        if (!$admin) { $q->where('r.enabled',1)->where('p.hidden',0)->where('p.stock_control',1)->whereIn('p.product_group_id',array_column($groups,'id')); }
         if (!empty($input['keywords'])) { $q->whereLike('p.name','%' . mb_substr((string)$input['keywords'],0,100) . '%'); }
-        if (!empty($input['group_id'])) { $q->where('p.product_group_id',(int)$input['group_id']); }
+        if (!empty($input['group_id']) && ($groupId=Filters::id($input,'group_id'))) {
+            $selected=[$groupId=>true]; $children=[]; $pending=[$groupId];
+            foreach ($allGroups as $g) { $children[(int)$g['parent_id']][]=(int)$g['id']; }
+            while ($pending) {
+                $parent=array_pop($pending);
+                foreach ($children[$parent] ?? [] as $id) { if (!isset($selected[$id])) { $selected[$id]=true; $pending[]=$id; } }
+            }
+            $q->whereIn('p.product_group_id',array_keys($selected));
+        }
         $count=(clone $q)->count();
         $rows=$q->field('p.id,p.name,p.product_group_id,p.hidden,p.stock_control,p.qty,p.price,g.name group_name,r.enabled,r.known,r.reason,r.checked_at')->order('p.id','desc')->page($page,$limit)->select()->toArray(); $settings=Settings::get();
+        $revisions=!$admin && $clientId && $rows ? Store::table('subscription')->where('client_id',$clientId)->whereIn('product_id',array_column($rows,'id'))->column('revision','product_id') : [];
         foreach ($rows as &$r) {
             $r['enabled']=(int)($r['enabled'] ?? 0); $read=(new Inventory())->read((int)$r['id']);
             $r['inventory_state']=$read['state']; $r['inventory_reason']=$read['reason'] ?? '';
             if (!$admin && $read['state']!=='known') { unset($r['qty']); }
             $r['purchase_url']=Store::baseUrl() . '/cart/goods.htm?id=' . (int)$r['id'];
-            if (!$admin) { if (!$settings['show_quantity']) { unset($r['qty']); } if (!$settings['show_price']) { unset($r['price']); } unset($r['reason'],$r['checked_at'],$r['hidden']); }
+            if (!$admin) { $r['subscription_revision']=(int)($revisions[$r['id']] ?? 0); if (!$settings['show_quantity']) { unset($r['qty']); } if (!$settings['show_price']) { unset($r['price']); } unset($r['reason'],$r['checked_at'],$r['hidden']); }
             else {
                 $r['subscribers']=(int)Store::table('subscription')->where('product_id',$r['id'])->where('status','active')->where('expires_at','>',time())->count();
                 $r['thresholds']=Store::table('subscription')->where('product_id',$r['id'])->where('status','active')->where('expires_at','>',time())->field('threshold,COUNT(*) subscribers')->group('threshold')->order('threshold')->select()->toArray();
                 $r['last_notified_at']=(int)Store::table('item')->where('event_type','restock')->where('product_id',$r['id'])->max('accepted_at');
             }
         }
-        $groups=Db::name('product_group')->alias('g')->leftJoin('product_group parent','parent.id=g.parent_id')->field('g.id,g.name');
-        if (!$admin) { $groups->where('g.hidden',0)->where(function ($where) { $where->where('g.parent_id',0)->whereOr('parent.hidden',0); }); }
-        return ['list'=>$rows,'count'=>$count,'groups'=>$groups->order('g.id')->select()->toArray()];
+        return ['list'=>$rows,'count'=>$count,'groups'=>array_map(static function ($g) { return ['id'=>$g['id'],'name'=>$g['name']]; },$groups)];
     }
     private function productCatalog() : array
     {

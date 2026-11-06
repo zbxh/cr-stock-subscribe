@@ -159,7 +159,11 @@ class Worker
                     if ($ok) { $valid[]=$item; $products[$p['id']]=$p; }
                     elseif (in_array($item['status'],['pending','batched'],true)) { $this->suspend($item,$reason,$code); }
                 }
-                if (count($valid)!==count($items) || !$valid) {
+                // Editing a subscription can move its logical item to a new
+                // batch. Compare with the original membership as well, so the
+                // old queued delivery cannot silently become a smaller message.
+                $originalCount=(int)Store::table('delivery_item')->where('delivery_id',$id)->count();
+                if ($originalCount!==count($items) || count($valid)!==count($items) || !$valid) {
                     // Never edit the meaning of an existing queued merged notification.
                     Store::table('delivery')->where('id',$id)->update(['status'=>'cancelled','reason'=>'发送条件变更，已重新合并有效商品','updated_at'=>time()]);
                     History::capture($id);
