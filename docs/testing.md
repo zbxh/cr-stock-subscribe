@@ -8,14 +8,16 @@
 
 ```bash
 python3 scripts/check.py
+php tests/security_test.php
 python3 tests/package_test.py
 python3 scripts/package.py --output /path/to/output
-python3 scripts/package.py --verify /path/to/output/CrStockSubscribe-0.1.0.zip
+python3 scripts/package.py --verify /path/to/output/CrStockSubscribe-0.1.1.zip
 ```
 
 非默认路径的运行时可通过 `PHP_BINARY`、`NODE_BINARY` 指定。`SOURCE_DATE_EPOCH` 可以固定 ZIP 时间戳，便于重建相同输入的包。已有安装包不会被自动覆盖。
 
 - `check.py`：PHP／JavaScript 语法、运行文件范围、默认短信无链接、第三方许可及源码隐私检查。
+- `security_test.php`：库外密钥、加解密与篡改拒绝、缺失密钥、日志脱敏、Webhook 地址检查；不读取站点配置，不需要数据库。
 - `package.py`：从插件运行目录创建 `cr_stock_subscribe/` 顶层 ZIP，生成 SHA256，并核对归档内容与源码一致。
 - `package_test.py`：检查错误目录层级、缺失文件、源码变化、夹带私有文件及路径越界的包会被拒绝。
 - GitHub Actions：在 PHP 7.4、8.1、8.2、8.3 上执行上述检查。这些检查不代表 V10 整站已在全部 PHP 版本运行验收。
@@ -37,3 +39,9 @@ python3 scripts/package.py --verify /path/to/output/CrStockSubscribe-0.1.0.zip
 7. 检查停用、重新启用和卸载重装，保留配置及历史，不重发旧通知。
 
 发送接口受理不等同于最终收到。短信接口和模板审核由使用者配置；Webhook 测试必须使用实际可接收请求的端点。
+
+## 0.1.1 安全回归
+
+两版 V10 集成环境分别验证了新安装不写入数据库主密钥、从真实 0.1.0 配置迁移、迁移失败回滚及重试、恢复密钥、保留自定义模板，以及升级前的 Webhook 任务继续发送且不重复。每版同时执行库存、合并、限速和并发等 175 项业务回归。公共安全脚本另有 42 项独立检查。
+
+全新数据库安装使用原版 V10 安装器和默认主题，另以浏览器检查后台插件安装、启用及设置；不把隔离表测试当作全新系统安装。验证使用合成账户与测试地址，私有环境及浏览器认证状态不进入仓库或安装包。

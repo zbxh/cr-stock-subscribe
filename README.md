@@ -6,7 +6,7 @@
 
 客户按库存门槛订阅，商家统一管理通知渠道、补货群发与发送频率。
 
-[![版本](https://img.shields.io/badge/version-0.1.0%20beta-orange)](https://github.com/zbxh/cr-stock-subscribe/releases/tag/v0.1.0)
+[![版本](https://img.shields.io/badge/version-0.1.1%20beta-orange)](https://github.com/zbxh/cr-stock-subscribe/releases/tag/v0.1.1)
 [![智简魔方 V10 业务系统](https://img.shields.io/badge/platform-%E6%99%BA%E7%AE%80%E9%AD%94%E6%96%B9%20V10%20%E4%B8%9A%E5%8A%A1%E7%B3%BB%E7%BB%9F-blue)](#compatibility)
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-777bb4)](#compatibility)
 [![检查](https://github.com/zbxh/cr-stock-subscribe/actions/workflows/check.yml/badge.svg)](https://github.com/zbxh/cr-stock-subscribe/actions/workflows/check.yml)
@@ -23,7 +23,7 @@
 
 商家可以根据订阅人数和门槛分布安排补货，控制邮件与短信的发送频率，配置企业微信、钉钉及通用 Webhook 群通知，也可以针对多个商品预览后统一发送补货通知。
 
-插件独立安装，复用 V10 的账户、权限、菜单、定时任务、通知模板和发送接口。当前版本为 **0.1.0 测试版**。
+插件独立安装，复用 V10 的账户、权限、菜单、定时任务、通知模板和发送接口。当前版本为 **0.1.1 测试版**。
 
 <a id="features"></a>
 
@@ -124,7 +124,7 @@
 
 ## 快速安装
 
-1. 从 [GitHub Releases](https://github.com/zbxh/cr-stock-subscribe/releases) 下载 `CrStockSubscribe-0.1.0.zip`。页面自动生成的 Source code 是仓库源码，不是商城安装包。
+1. 从 [GitHub Releases](https://github.com/zbxh/cr-stock-subscribe/releases) 下载 `CrStockSubscribe-0.1.1.zip`。页面自动生成的 Source code 是仓库源码，不是商城安装包。
 2. 解压到 V10 的 `public/plugins/addon/`，确认入口为 `cr_stock_subscribe/CrStockSubscribe.php`。该 ZIP 的顶层就是 `cr_stock_subscribe/`。
 3. 在后台应用／插件管理中安装并启用“补货订阅”，然后在插件后台开放允许订阅的商品。
 4. 配置通知渠道和 V10 原生邮件／短信接口；短信默认关闭，需要关联模板并完成服务商要求的审核。
@@ -158,8 +158,8 @@
 
 ## 版本与下载
 
-- 当前版本：**0.1.0 测试版**。
-- [下载与发布说明](https://github.com/zbxh/cr-stock-subscribe/releases/tag/v0.1.0)
+- 当前版本：**0.1.1 测试版**。
+- [下载与发布说明](https://github.com/zbxh/cr-stock-subscribe/releases/tag/v0.1.1)
 - [更新日志](CHANGELOG.md) · [版本索引](releases/index.json)
 - 每个版本提供商城结构 ZIP 和 SHA256，后续修复使用 0.1.x 版本递增，历史版本继续保留。
 

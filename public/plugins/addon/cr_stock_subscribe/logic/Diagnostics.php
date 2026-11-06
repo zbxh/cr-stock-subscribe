@@ -8,7 +8,8 @@ final class Diagnostics
         $text=strip_tags($text);
         $text=preg_replace('/https?:\/\/[^\s<>]+/iu','[地址已隐藏]',$text);
         $text=preg_replace('/[\w.+-]+@[\w.-]+\.[a-z]{2,}/iu','[邮箱已隐藏]',$text);
-        $text=preg_replace('/(?:secret|token|password|authorization|access_token|key)\s*[:=]\s*[^\s,;]+/iu','[密钥已隐藏]',$text);
+        $text=preg_replace('/\b(?:secret|token|password|authorization|access[_-]?token|api[_-]?key|key)\b["\']?\s*[:=]\s*(?:"[^"]*"|\'[^\']*\'|(?:Bearer|Basic)\s+[^\s,;]+|[^\s,;]+)/iu','[密钥已隐藏]',$text);
+        $text=preg_replace('/\b(?:Bearer|Basic)\s+[a-z0-9+\/_.=~-]+/iu','[认证信息已隐藏]',$text);
         $text=preg_replace('/(?<![a-z0-9])[+]?\d[\d -]{6,}\d(?![a-z0-9])/iu','[号码已隐藏]',$text);
         return mb_substr(preg_replace('/[\x00-\x1f\x7f]/u',' ',(string)$text),0,220);
     }

@@ -154,7 +154,7 @@ class Service
     }
     public static function auditActions() : array
     {
-        return ['history_archived'=>'历史通知归档','product_delisted'=>'商品下架通知安排','products_configured'=>'商品订阅设置','settings_saved'=>'插件设置修改','subscriptions_saved'=>'订阅保存','subscription_cancelled'=>'订阅取消','endpoint_saved'=>'Webhook 地址保存','endpoint_deleted'=>'Webhook 地址删除','personal_endpoint_disabled'=>'个人地址禁用','personal_endpoint_enabled'=>'个人地址恢复','delivery_reviewed'=>'通知结果人工核对','endpoint_tested'=>'Webhook 连接测试','broadcast_created'=>'人工补货群发','delivery_retry_requested'=>'通知重试','deferred_notification_ready'=>'冷却结束复核','plugin_uninstalled'=>'插件卸载'];
+        return ['encryption_key_migrated'=>'Webhook 加密密钥迁移','history_archived'=>'历史通知归档','product_delisted'=>'商品下架通知安排','products_configured'=>'商品订阅设置','settings_saved'=>'插件设置修改','subscriptions_saved'=>'订阅保存','subscription_cancelled'=>'订阅取消','endpoint_saved'=>'Webhook 地址保存','endpoint_deleted'=>'Webhook 地址删除','personal_endpoint_disabled'=>'个人地址禁用','personal_endpoint_enabled'=>'个人地址恢复','delivery_reviewed'=>'通知结果人工核对','endpoint_tested'=>'Webhook 连接测试','broadcast_created'=>'人工补货群发','delivery_retry_requested'=>'通知重试','deferred_notification_ready'=>'冷却结束复核','plugin_uninstalled'=>'插件卸载'];
     }
     private function audits(array $input) : array
     {

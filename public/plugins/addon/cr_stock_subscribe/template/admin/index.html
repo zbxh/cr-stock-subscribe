@@ -1,7 +1,7 @@
 <div id="content" class="template stock-subscribe-admin" v-cloak>
   <com-config>
     <t-card class="list-card-container">
-      <div class="common-header"><div><div class="table-title">补货订阅 <t-tag variant="light">0.1.0</t-tag></div><p class="second-text-color">按商品总库存订阅；个人通知与商家群推送分别管理。</p></div></div>
+      <div class="common-header"><div><div class="table-title">补货订阅 <t-tag variant="light">0.1.1</t-tag></div><p class="second-text-color">按商品总库存订阅；个人通知与商家群推送分别管理。</p></div></div>
       <t-space v-if="health" :break-line="true" align="center" class="mb24">
         <t-tag :theme="health.state==='normal'?'success':health.state==='paused'?'default':'warning'" variant="light">{{health.state==='normal'?'任务运行中':health.state==='paused'?'已暂停':'需要检查'}}</t-tag>
         <t-tooltip :content="'最近完整检查：'+time(health.last_success_at)"><span class="second-text-color">最近检查启动 {{time(health.last_cron_at)}}</span></t-tooltip>
@@ -259,5 +259,5 @@
   </com-config>
 </div>
 <style>@media(max-width:767px){.stock-subscribe-admin .stock-notification-rules{max-width:calc(100vw - 64px);}}</style>
-<script src="/plugins/addon/cr_stock_subscribe/template/shared.js?v=0.1.0&rev=20261103h"></script>
-<script src="/plugins/addon/cr_stock_subscribe/template/admin/app.js?v=0.1.0&rev=20261103h"></script>
+<script src="/plugins/addon/cr_stock_subscribe/template/shared.js?v=0.1.1&rev=20261103h"></script>
+<script src="/plugins/addon/cr_stock_subscribe/template/admin/app.js?v=0.1.1&rev=20261103h"></script>

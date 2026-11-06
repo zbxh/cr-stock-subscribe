@@ -50,23 +50,24 @@ class Endpoint
         if (!$admin && !empty($old['admin_disabled'])) { throw new \DomainException('此地址已被商家禁用，请联系商家恢复。'); }
         if ($id && !$old) { throw new \DomainException('通知地址不存在或无权修改。'); }
         if ($old && $expectedRevision!==null && (int)$old['edit_revision']!==$expectedRevision) { throw new \DomainException('地址已在其他页面更新，当前草稿已保留。请关闭弹窗并重新打开最新地址后再保存。'); }
-        if (!$id && Store::table('endpoint')->where('client_id',$owner)->where('scope',$scope)->count() >= ($admin ? 50 : 10)) { throw new \DomainException('通知地址数量已达到上限。'); }
+        $oldUrl=$old ? Store::open($old['url']) : '';
+        $oldSecret=$old ? Store::open($old['secret']) : '';
         $name = trim((string)($input['name'] ?? '')); $kind = (string)($input['kind'] ?? '');
         if ($name === '' || mb_strlen($name) > 100) { throw new \DomainException('通知地址名称应为 1 至 100 个字符。'); }
         $url = trim((string)($input['url'] ?? ''));
-        if ($url === '' && $old) { $url = Store::open($old['url']); }
+        if ($url === '' && $old) { $url = $oldUrl; }
         $enabled=Store::number($input['enabled'] ?? 1,0,1,'启用状态');
         // An existing destination may be renamed or stopped while DNS is down.
         // Disabled destinations may be saved while DNS is unavailable. Enabling
         // or replacing an active destination verifies DNS; each send rechecks it.
-        $resolve=$enabled && (!$old || $kind!==$old['kind'] || !hash_equals(Store::open($old['url']),$url) || !$old['enabled']);
+        $resolve=$enabled && (!$old || $kind!==$old['kind'] || !hash_equals($oldUrl,$url) || !$old['enabled']);
         self::validate($url,$kind,$resolve);
         $secret = (string)($input['secret'] ?? '');
-        if ($secret === '' && $old && empty($input['clear_secret'])) { $secret = Store::open($old['secret']); }
+        if ($secret === '' && $old && empty($input['clear_secret'])) { $secret = $oldSecret; }
         if (strlen($secret) > 512) { throw new \DomainException('签名密钥过长。'); }
         $products = $admin ? Store::ids($input['product_ids'] ?? []) : [];
         $threshold = Store::number($input['threshold'] ?? 3,0,100000000,'库存门槛');
-        $changed=!$old || $old['kind']!==$kind || !hash_equals(Store::open($old['url']),$url) || !hash_equals(Store::open($old['secret']),$secret) || (int)$old['enabled']!==$enabled || (int)$old['threshold']!==$threshold || Store::decode($old['product_ids'])!==$products;
+        $changed=!$old || $old['kind']!==$kind || !hash_equals($oldUrl,$url) || !hash_equals($oldSecret,$secret) || (int)$old['enabled']!==$enabled || (int)$old['threshold']!==$threshold || Store::decode($old['product_ids'])!==$products;
         $baseline = $old && !$changed ? Store::decode($old['baseline']) : [];
         foreach ($changed ? $products : [] as $pid) {
             $r = Store::table('product')->where('product_id',$pid)->find();

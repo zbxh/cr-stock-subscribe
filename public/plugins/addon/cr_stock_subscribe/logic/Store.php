@@ -5,7 +5,7 @@ use think\facade\Db;
 
 final class Store
 {
-    const VERSION = '0.1.0';
+    const VERSION = '0.1.1';
     const PREFIX = 'addon_cr_stock_subscribe_';
 
     public static function table($name) { return Db::name(self::PREFIX . $name); }
@@ -51,29 +51,9 @@ final class Store
         if (strpos($s, '@') !== false) { [$name, $host] = explode('@', $s, 2); return mb_substr($name, 0, 1) . '***@' . $host; }
         return strlen($s) > 4 ? '***' . substr($s, -4) : '***';
     }
-    public static function seal($plain) : string
-    {
-        $key = self::key();
-        $iv = random_bytes(12); $tag = '';
-        $cipher = openssl_encrypt((string)$plain, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag);
-        if ($cipher === false) { throw new \RuntimeException('通知地址加密失败。'); }
-        return base64_encode($iv . $tag . $cipher);
-    }
-    public static function open($encoded) : string
-    {
-        $raw = base64_decode((string)$encoded, true);
-        if ($raw === false || strlen($raw) < 28) { throw new \RuntimeException('通知地址无法读取。'); }
-        $plain = openssl_decrypt(substr($raw, 28), 'aes-256-gcm', self::key(), OPENSSL_RAW_DATA, substr($raw, 0, 12), substr($raw, 12, 16));
-        if ($plain === false) { throw new \RuntimeException('通知地址无法解密。'); }
-        return $plain;
-    }
-    private static function key() : string
-    {
-        $key=base64_decode((string)self::table('setting')->where('id',3)->value('data'),true);
-        if ($key===false || strlen($key)!==32) { throw new \RuntimeException('插件加密配置不可用。'); }
-        return $key;
-    }
-    public static function sign(string $text) : string { return hash_hmac('sha256',$text,self::key()); }
+    public static function seal($plain) : string { return Keyring::seal((string)$plain); }
+    public static function open($encoded) : string { return Keyring::open((string)$encoded); }
+    public static function sign(string $text) : string { return hash_hmac('sha256',$text,Keyring::key()); }
     public static function baseUrl() : string
     {
         $url = rtrim((string)configuration('website_url'), '/');
@@ -90,6 +70,6 @@ final class Store
     {
         try { return json(['status' => 200, 'msg' => '操作成功', 'data' => $fn()]); }
         catch (\DomainException $e) { return json(['status' => 400, 'msg' => $e->getMessage()]); }
-        catch (\Throwable $e) { error_log('cr_stock_subscribe: ' . get_class($e) . ' ' . $e->getMessage()); return json(['status' => 500, 'msg' => '操作暂未完成，请稍后重试或联系管理员。']); }
+        catch (\Throwable $e) { Diagnostics::fault('request',0,$e); return json(['status' => 500, 'msg' => '操作暂未完成，请稍后重试或联系管理员。']); }
     }
 }

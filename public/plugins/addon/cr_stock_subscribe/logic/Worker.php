@@ -116,7 +116,8 @@ class Worker
             $key='subscription:'.$item['subscription_id'];
             if (!array_key_exists($key,$cache)) { $cache[$key]=Store::table('subscription')->where('id',$item['subscription_id'])->find(); }
             $s=$cache[$key];
-            if (($eventType==='delisted' && (!$s || $s['status']!=='active')) || !$s || !in_array($s['status'],['active','complete'],true) || ($s['status']==='complete' && $s['mode']!=='once') || (int)$s['generation']!==(int)$item['generation'] || (int)$s['revision']!==(int)$item['subscription_revision'] || (int)$s['expires_at']<=time() || !in_array($item['channel'],Store::decode($s['channels']),true)) { return [false,'订阅已变更或失效',null,'stop']; }
+            $allowedStatuses=$eventType==='delisted' ? ['active'] : ['active','complete'];
+            if (!$s || !in_array($s['status'],$allowedStatuses,true) || ($s['status']==='complete' && $s['mode']!=='once') || (int)$s['generation']!==(int)$item['generation'] || (int)$s['revision']!==(int)$item['subscription_revision'] || (int)$s['expires_at']<=time() || !in_array($item['channel'],Store::decode($s['channels']),true)) { return [false,'订阅已变更或失效',null,'stop']; }
             $key='client:'.$item['client_id'];
             if (!array_key_exists($key,$cache)) { $cache[$key]=Notice::client((int)$item['client_id']); }
             $client=$cache[$key];

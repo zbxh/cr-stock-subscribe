@@ -7,6 +7,7 @@ class Webhook
     public function send(array $endpoint, array $products, string $event, int $created, string $source, string $eventType = 'restock') : array
     {
         $this->deadline=microtime(true)+10;
+        $requested=false;
         try {
             $url=Store::open($endpoint['url']); $secret=Store::open($endpoint['secret']);
             $target=$this->resolve($url,$endpoint['kind']); $settings=Settings::get(); $public=[]; $down=$eventType==='delisted'; $lines=['【补货订阅】' . count($products) . ($down ? '款商品已下架' : '款商品已补货')];
@@ -33,6 +34,7 @@ class Webhook
             $headers=['Content-Type: application/json','X-Stock-Event: ' . $event,'X-Stock-Timestamp: ' . $timestamp];
             if ($secret !== '' && $endpoint['kind']==='json') { $headers[]='X-Stock-Signature: sha256=' . hash_hmac('sha256',$timestamp . "\n" . $body,$secret); }
             if(microtime(true)>=$this->deadline) { return ['status'=>'failed','reason'=>'Webhook 发送前解析或准备超时，尚未请求接收端']; }
+            $requested=true;
             [$errno,$code,$reply,$oversize]=$this->request($url,$body,$headers,$target);
             if ($errno || $oversize) {
                 // Only failures known to precede the HTTP request are safe to
@@ -52,7 +54,7 @@ class Webhook
             }
             return ['status'=>$accepted ? 'accepted' : 'failed','reason'=>$accepted ? '' : ('Webhook 接收方未返回成功结果'.(!empty($decoded['errmsg']) ? '：'.Diagnostics::reason((string)$decoded['errmsg']) : '')),'http_code'=>$code,'provider_code'=>Diagnostics::code($decoded['errcode'] ?? '')];
         } catch (\DomainException $e) { return ['status'=>'failed','reason'=>$e->getMessage()]; }
-        catch (\Throwable $e) { return ['status'=>'unknown','reason'=>'Webhook 执行结果待核对']; }
+        catch (\Throwable $e) { Diagnostics::fault('webhook',(int)($endpoint['id'] ?? 0),$e); return ['status'=>$requested ? 'unknown' : 'failed','reason'=>$requested ? 'Webhook 执行结果待核对' : 'Webhook 发送前准备失败，请检查私有密钥及站点配置']; }
     }
     protected function resolve(string $url, string $kind) : array { return Endpoint::validate($url,$kind,true); }
     protected function request(string $url, string $body, array $headers, array $target) : array

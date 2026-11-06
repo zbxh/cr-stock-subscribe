@@ -31,7 +31,7 @@ final class Schema
             Db::execute('CREATE TABLE IF NOT EXISTS `' . $table . '` (' . $definition . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
         }
         Store::table('setting')->extra('IGNORE')->insert(['id'=>1,'data'=>Store::json(Settings::defaults()),'updated_at'=>time()]);
-        Store::table('setting')->extra('IGNORE')->insert(['id'=>3,'data'=>base64_encode(random_bytes(32)),'updated_at'=>time()]);
+        Keyring::install();
         // Additive migrations run only from install/after-upgrade, never in the
         // platform's upgrade transaction. Existing restock facts keep their type.
         $additions=[
