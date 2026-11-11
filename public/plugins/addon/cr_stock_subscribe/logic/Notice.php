@@ -227,11 +227,10 @@ class Notice
     public function send(string $channel, array $client, array $products, int $created, string $eventType = 'restock', string $event = '') : array
     {
         $vars = self::variables($products,$created,$eventType,$event);
-        if ($channel === 'email') { foreach (['stock_product_name','stock_product_list'] as $key) { $vars[$key]=htmlspecialchars(htmlspecialchars($vars[$key],ENT_QUOTES,'UTF-8'),ENT_QUOTES,'UTF-8'); } }
         $param = ['name'=>self::action(count($products),$eventType),'client_id'=>(int)$client['id'],'email'=>(string)$client['email'],'phone'=>(string)$client['phone'],'phone_code'=>(string)$client['phone_code'],'template_param'=>$vars];
         // Deliberately use V10's actual template senders inside our owned V10 task.
         // Calling system_notice once per subscriber would also trigger unrelated group webhooks.
-        $result = $channel === 'email' ? (new \app\common\logic\EmailLogic())->send($param) : (new \app\common\logic\SmsLogic())->send($param);
+        $result = $channel === 'email' ? (new EmailNotice())->send($param) : (new \app\common\logic\SmsLogic())->send($param);
         if ((int)($result['status'] ?? 0) === 200) { return ['status'=>'accepted']; }
         $message = (string)($result['msg'] ?? '');
         // V10 adapters may collapse transport failures into an ordinary error.

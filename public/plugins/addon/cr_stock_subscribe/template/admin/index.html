@@ -1,7 +1,7 @@
 <div id="content" class="template stock-subscribe-admin" v-cloak>
   <com-config>
     <t-card class="list-card-container">
-      <div class="common-header"><div><div class="table-title">补货订阅 <t-tag variant="light">0.1.2</t-tag></div><p class="second-text-color">按商品总库存订阅；个人通知与商家群推送分别管理。</p></div></div>
+      <div class="common-header"><div><div class="table-title">补货订阅 <t-tag variant="light">0.1.3</t-tag></div><p class="second-text-color">按商品总库存订阅；个人通知与商家群推送分别管理。</p></div></div>
       <t-space v-if="health" :break-line="true" align="center" class="mb24">
         <t-tag :theme="health.state==='normal'?'success':health.state==='paused'?'default':'warning'" variant="light">{{health.state==='normal'?'任务运行中':health.state==='paused'?'已暂停':'需要检查'}}</t-tag>
         <t-tooltip :content="'最近完整检查：'+time(health.last_success_at)"><span class="second-text-color">最近检查启动 {{time(health.last_cron_at)}}</span></t-tooltip>
@@ -65,7 +65,7 @@
         <t-tab-panel v-if="allowed('broadcast')" value="broadcast" label="补货群发">
           <p class="second-text-color">只发送给有效订阅且达到门槛的客户，同一客户的多个商品按渠道合并。人工群发与自动提醒共用去重和额度限制。</p>
           <t-form label-align="top" @submit="previewBroadcast">
-            <t-form-item label="选择商品"><t-select v-model="broadcastForm.product_ids" multiple filterable :options="productOptions" placeholder="搜索并选择商品" @search="searchOptions" @change="invalidatePreview"></t-select></t-form-item>
+            <t-form-item label="选择商品"><t-select v-model="broadcastForm.product_ids" multiple filterable :options="productOptions" placeholder="搜索并选择商品" @change="invalidatePreview"></t-select></t-form-item>
             <t-form-item label="发送目标"><t-checkbox v-model="broadcastForm.clients" @change="invalidatePreview">通知订阅客户</t-checkbox><t-checkbox v-model="broadcastForm.groups" @change="invalidatePreview">推送到已配置的商家群</t-checkbox></t-form-item>
             <t-button theme="primary" type="submit" :loading="busy">预览本次群发</t-button>
           </t-form>
@@ -172,13 +172,21 @@
               <t-form class="stock-notification-rules" :data="settings" label-align="top" @submit="saveSettings">
                 <template v-for="section in ruleSections">
                   <t-divider :key="section.title" align="left">{{section.title}}</t-divider>
+                  <div v-if="section.title==='发送频率'" :key="section.title+'queue'" class="common-header"><span class="second-text-color">待发情况更新于 {{time(sendQueue.checked_at)}}</span><t-button variant="text" :loading="sendQueueLoading" @click="refreshSendQueue">刷新待发情况</t-button></div>
                   <t-row :key="section.title+'fields'" :gutter="[24,24]">
                     <t-col v-for="field in section.fields" :key="field.key" :xs="12" :sm="6" :lg="section.fields.length===2?6:4">
                       <t-form-item :label="settingLabels[field.key]" :name="field.key" :help="field.key==='notification_seconds' && Number(settings.notification_seconds)<Number(settings.merge_seconds)+180?'当前有效期较短，可以保存；建议比合并窗口多留 180 秒，避免分钟任务或限速排队时过期。':field.help">
-                        <t-input-number v-model="settings[field.key]" :min="field.key==='notification_seconds'?Math.max(60,Number(settings.merge_seconds || 0)+1):field.min" :max="field.max" :allow-input-over-limit="false" :decimal-places="0" :suffix="field.unit" theme="normal" style="width:100%"></t-input-number>
+                        <div style="width:100%"><t-input-number v-model="settings[field.key]" :min="field.key==='notification_seconds'?Math.max(60,Number(settings.merge_seconds || 0)+1):field.min" :max="field.max" :allow-input-over-limit="false" :decimal-places="0" :suffix="field.unit" theme="normal" style="width:100%"></t-input-number>
+                          <t-space v-if="sendQueueStats[field.key]" direction="vertical" :size="4" style="margin-top:8px;width:100%">
+                            <t-space :size="12" :break-line="true"><span>待发 {{sendQueueStats[field.key].pending}} {{field.key==='email_per_minute'?'封':'次'}}</span><span class="second-text-color">待合并 {{sendQueueStats[field.key].items}} 项 · 发送中 {{sendQueueStats[field.key].sending}}</span></t-space>
+                            <t-space :size="8" :break-line="true"><span class="second-text-color">预计排空约 {{sendQueueStats[field.key].minutes}} 分钟<span v-if="sendQueueStats[field.key].draft">（按未保存频率）</span></span><t-tag v-if="sendQueueStats[field.key].risk" size="small" theme="warning" variant="light">可能来不及发完</t-tag></t-space>
+                            <span class="second-text-color">最早过期 {{time(sendQueueStats[field.key].expires)}}</span>
+                          </t-space>
+                        </div>
                       </t-form-item>
                     </t-col>
                   </t-row>
+                  <p v-if="section.title==='发送频率'" :key="section.title+'estimate'" class="third-text-color">预计排空时间仅按已合并待发数量与当前频率估算，不保证送达；未包含待合并项、新通知和后续重试。最早过期时间早于预计排空时，请检查频率和通知有效期。</p>
                 </template>
                 <p class="third-text-color">短信额度按预计计费条数计算，包含签名预留与发送中的占用，实际以服务商账单为准。</p>
               </t-form>
@@ -240,7 +248,7 @@
             <t-col :xs="12" :sm="6"><t-form-item label="类型"><t-select v-model="endpointForm.kind" :options="[{label:'企业微信机器人',value:'wecom'},{label:'钉钉机器人',value:'dingtalk'},{label:'通用 JSON',value:'json'}]"></t-select></t-form-item></t-col>
             <t-col :xs="12"><t-form-item :label="endpointForm.id?'新的 HTTPS 地址（留空保留）':'HTTPS 地址'"><t-input v-model="endpointForm.url" placeholder="https://" autocomplete="off"></t-input></t-form-item></t-col>
             <t-col :xs="12"><t-form-item label="签名密钥（可选，留空保留）"><t-input v-model="endpointForm.secret" type="password" autocomplete="new-password"></t-input><template v-if="endpointForm.id" #help><t-checkbox v-model="endpointForm.clear_secret">清除已有密钥</t-checkbox></template></t-form-item></t-col>
-            <t-col :xs="12"><t-form-item label="推送商品"><t-select v-model="endpointForm.product_ids" multiple filterable :options="productOptions" @search="searchOptions"></t-select></t-form-item></t-col>
+            <t-col :xs="12"><t-form-item label="推送商品"><t-select v-model="endpointForm.product_ids" multiple filterable :options="productOptions"></t-select></t-form-item></t-col>
             <t-col :xs="12" :sm="6"><t-form-item label="库存超过多少件时推送" help="建议设为 3 及以上，减少临时库存提醒。"><t-input-number v-model="endpointForm.threshold" :min="0" :max="100000000" :decimal-places="0" suffix="件" style="width:100%"></t-input-number></t-form-item></t-col>
             <t-col :xs="12" :sm="6"><t-form-item label="启用地址"><t-space><t-switch v-model="endpointForm.enabled" :custom-value="[1,0]"></t-switch><span class="second-text-color">{{endpointForm.enabled?'启用':'停用'}}</span></t-space></t-form-item></t-col>
           </t-row>
@@ -259,5 +267,5 @@
   </com-config>
 </div>
 <style>@media(max-width:767px){.stock-subscribe-admin .stock-notification-rules{max-width:calc(100vw - 64px);}}</style>
-<script src="/plugins/addon/cr_stock_subscribe/template/shared.js?v=0.1.2&rev=20261103h"></script>
-<script src="/plugins/addon/cr_stock_subscribe/template/admin/app.js?v=0.1.2&rev=20261103h"></script>
+<script src="/plugins/addon/cr_stock_subscribe/template/shared.js?v=0.1.3&rev=20261103h"></script>
+<script src="/plugins/addon/cr_stock_subscribe/template/admin/app.js?v=0.1.3&rev=20261103h"></script>

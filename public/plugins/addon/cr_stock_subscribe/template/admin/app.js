@@ -19,7 +19,7 @@
         attemptColumns: [{colKey:'attempt',title:'次数',width:72},{colKey:'status',title:'发送状态',width:116,ellipsis:true},{colKey:'provider_code',title:'接口返回码',width:124,ellipsis:true},{colKey:'sms_units',title:'短信预计条数',width:124},{colKey:'created',title:'尝试时间',width:178},{colKey:'reason',title:'处理说明',minWidth:300,ellipsis:true}],
         subscriptionStatuses: StockSubscribe.options(['active','complete','cancelled','expired'],'全部订阅状态'), deliveryStatuses: StockSubscribe.options(['pending','queued','sending','accepted','failed','exhausted','unknown','skipped','cancelled','expired'],'全部发送状态'), channelOptions: StockSubscribe.options(['email','sms','webhook'],'全部渠道'), modeOptions: StockSubscribe.options(['once','continuous'],'全部提醒模式'), eventOptions: StockSubscribe.options(['restock','delisted'],'全部通知类型'), sourceOptions: StockSubscribe.options(['automatic','manual'],'全部通知来源'),
         personalClient: '', personalEndpoints: [], personalColumns: [{ colKey: 'id', title: '编号', width: 68 }, { colKey: 'name', title: '名称', width: 220, ellipsis: true }, { colKey: 'kind', title: '类型', width: 112 }, { colKey: 'url_hint', title: '地址（已脱敏）', minWidth: 320, ellipsis: true }, { colKey: 'enabled', title: '状态', width: 80 }, { colKey: 'updated', title: '更新时间', width: 178 }, { colKey: 'op', title: '操作', width: 124, fixed: 'right' }],
-        settingsTab: 'general', settingsLoading: false, savedSettings: '', settingsRevision: '', settingsConflict: false,
+        settingsTab: 'general', settingsLoading: false, savedSettings: '', settingsRevision: '', settingsConflict: false, sendQueue: {checked_at:0,channels:[]}, sendQueueLoading: false,
         subscriptionFields: [
           { key: 'max_subscriptions', min: 1, max: 200, unit: '个', help: '每位客户可同时保留 1–200 个有效商品订阅。' },
           { key: 'valid_days', min: 1, max: 730, unit: '天', help: '用于新建或重新订阅，可设置 1–730 天。' }
@@ -34,8 +34,7 @@
             { key: 'merge_seconds', min: 0, max: 300, unit: '秒', help: '0–300 秒；0 表示不等待合并。' },
             { key: 'notification_seconds', min: 60, max: 86400, unit: '秒', help: '60–86400 秒，须大于合并窗口；建议另留 180 秒，排队拥堵时适当加长。' },
             { key: 'cooldown_seconds', min: 60, max: 86400, unit: '秒', help: '60–86400 秒，冷却结束后自动复核库存。' },
-            { key: 'webhook_attempts', min: 1, max: 3, unit: '次', help: '1–3 次，包含首次发送；结果未知不自动重发。' },
-            { key: 'upstream_fresh_seconds', min: 60, max: 86400, unit: '秒', help: '60–86400 秒，仅使用 V10 既有库存同步。' }
+            { key: 'webhook_attempts', min: 1, max: 3, unit: '次', help: '1–3 次，包含首次发送；结果未知不自动重发。' }
           ] },
           { title: '短信费用控制', fields: [
             { key: 'sms_signature_length', min: 0, max: 100, unit: '字符', help: '按 UTF-16 字符预留签名与括号长度，默认 10；实际计费以服务商为准。' },
@@ -53,6 +52,16 @@
       computed: {
         hasPagePermission: function () { return ['view', 'setting', 'broadcast', 'log'].some(this.allowed); },
         settingsDirty: function () { return !!this.savedSettings && JSON.stringify(this.settings) !== this.savedSettings; },
+        sendQueueStats: function () {
+          var stats={};
+          ['email','sms'].forEach(channel=>{
+            var row=this.sendQueue.channels.find(x=>x.channel===channel) || {}, key=channel+'_per_minute';
+            var rate=Number(this.settings[key]) || Number(row.per_minute) || 1, pending=Number(row.pending_deliveries || 0);
+            var minutes=Math.ceil(pending/rate), remaining=Number(row.expires_in_seconds || 0);
+            stats[key]={pending:pending,items:Number(row.pending_items || 0),sending:Number(row.sending || 0),minutes:minutes,expires:Number(row.earliest_expires_at || 0),risk:pending>0 && !!row.earliest_expires_at && minutes*60>=remaining,draft:!!row.per_minute && rate!==Number(row.per_minute)};
+          });
+          return stats;
+        },
         productGroupMap: function () { var map = {}; this.productGroups.forEach(g => { map[Number(g.id)] = g; }); return map; },
         productGroupOptions: function () { return [{ label: '全部分类', value: 'all' }].concat(this.productGroups.map(g => { var path = this.groupPath(g.id); return path ? { label: path.map(x => x.name).join(' / '), value: String(g.id) } : null; }).filter(Boolean), [{ label: '未分类或分类异常', value: 'other' }]); },
         filteredProducts: function () {
@@ -135,6 +144,7 @@
         readinessLabel: function (state) {return ({closed:'后台关闭',attention:'需要配置',ready:'配置可用'})[state] || '待检查';},
         readinessTip: function (row) {return row.details.map(d=>d.label+'：'+(d.reason || '配置可用')).join('；');},
         refreshReadiness: async function () {if(this.readinessLoading)return;this.readinessLoading=true;try{var d=await this.api('settings');this.channelOverview=d.channel_overview||[];this.smsUsage=d.sms_usage||{};}catch(e){this.error=StockSubscribe.message(e);}finally{this.readinessLoading=false;}},
+        refreshSendQueue: async function () {if(this.sendQueueLoading)return;this.sendQueueLoading=true;try{var d=await this.api('settings');this.sendQueue=d.send_queue || {checked_at:0,channels:[]};}catch(e){this.error=StockSubscribe.message(e);}finally{this.sendQueueLoading=false;}},
         showEndpointRecords: function (row) {this.tab='records';this.recordView='notifications';this.recordFilter={archive:'current',endpoint_id:String(row.id),review:'',keywords:'',status:'',channel:'webhook',event_type:'',source:'',target:'group',client_id:'',product_id:'',dates:[]};this.searchRecords();},
         api: function (path, method, body) { return StockSubscribe.api(path, method, body, true); },
         guard: async function (fn) { if (this.busy) return; this.busy = true; this.error = ''; this.notice = ''; try { await fn(); } catch (e) { this.error = StockSubscribe.message(e); this.$message.error(this.error); } finally { this.busy = false; } },
@@ -200,7 +210,7 @@
         openReview: function (row) {this.reviewTarget=row;this.reviewForm={outcome:row.review?row.review.outcome:'unresolved',note:row.review?row.review.note:''};this.reviewVisible=true;},
         saveReview: function () {this.guard(async()=>{await this.api('records/'+this.reviewTarget.id+'/review','POST',this.reviewForm);this.reviewVisible=false;this.notice='核对结果已登记，原始结果保留，未触发重发。';await this.loadRecords(this.recordPage);});},
         nativeLogPage: function (row) {return this.adminPage(row.channel==='sms'?'log_notice_sms.htm':'log_notice_email.htm');},
-        loadSettings: async function (force) { if(this.settingsLoading || this.settingsDirty && !force)return;this.settingsLoading = true; try { var d = await this.api('settings'); this.settings = d.settings; this.savedSettings = JSON.stringify(d.settings); this.settingsRevision = d.settings_revision; this.settingsConflict = false; this.settingLabels = d.labels; this.templates = d.templates; this.channelOverview=d.channel_overview||[];this.smsUsage=d.sms_usage||{};this.parameters = d.parameters; this.lastCron = d.last_cron_at; } catch (e) { this.error = StockSubscribe.message(e); } finally { this.settingsLoading = false; } },
+        loadSettings: async function (force) { if(this.settingsLoading || this.settingsDirty && !force)return;this.settingsLoading = true; try { var d = await this.api('settings'); this.settings = d.settings; this.savedSettings = JSON.stringify(d.settings); this.settingsRevision = d.settings_revision; this.settingsConflict = false; this.settingLabels = d.labels; this.templates = d.templates; this.channelOverview=d.channel_overview||[];this.smsUsage=d.sms_usage||{};this.sendQueue=d.send_queue || {checked_at:0,channels:[]};this.parameters = d.parameters; this.lastCron = d.last_cron_at; } catch (e) { this.error = StockSubscribe.message(e); } finally { this.settingsLoading = false; } },
         reloadSettings: function () { this.guard(async()=>{if(this.settingsDirty){var proceed=await new Promise(resolve=>{var dialog=this.$dialog.confirm({header:'重新读取最新设置',body:'重新读取会放弃当前未保存的草稿，请先记下需要保留的修改。',confirmBtn:'放弃草稿并重新读取',cancelBtn:'保留草稿',onConfirm:()=>{dialog.hide();resolve(true);},onClose:()=>{dialog.hide();resolve(false);}});});if(!proceed)return;}await this.loadSettings(true);}); },
         saveSettings: function () { this.guard(async () => { var data = Object.assign({}, this.settings, {settings_revision:this.settingsRevision}); ['enabled', 'email', 'sms', 'webhook', 'show_quantity', 'show_price'].forEach(k => { data[k] = Number(!!data[k]); }); try{await this.api('settings', 'POST', data);}catch(e){if(String(e.message).includes('其他页面更新'))this.settingsConflict=true;throw e;}this.notice = '插件设置已保存。'; await this.loadSettings(true); }); },
         loadEndpoints: async function () { try { var d = await this.api('endpoints'); this.endpoints = d.list; } catch (e) { this.error = StockSubscribe.message(e); } },
@@ -208,7 +218,7 @@
         disablePersonal: function (e) { this.guard(async () => { await this.api('personal_endpoints/' + e.id + '/disable', 'POST', {}); var d = await this.api('personal_endpoints?client_id=' + this.personalClient); this.personalEndpoints = d.list; this.notice = '已停用个人地址，尚未发送的任务已停止。'; }); },
         enablePersonal: function (e) { this.guard(async () => { await this.api('personal_endpoints/'+e.id+'/enable','POST',{});var d=await this.api('personal_endpoints?client_id='+this.personalClient);this.personalEndpoints=d.list;this.notice='已恢复启用，旧任务不补发。'; }); },
         openEndpoint: function (e) { this.error = ''; this.notice = ''; this.endpointForm = { id: e ? Number(e.id) : 0, revision:e?Number(e.edit_revision):0, name: e ? e.name : '', kind: e ? e.kind : 'wecom', url: '', secret: '', clear_secret: false, product_ids: e ? e.product_ids.slice() : [], threshold: e ? Number(e.threshold) : 3, enabled: e ? Number(e.enabled) : 1 }; this.endpointVisible = true; this.searchOptions(''); },
-        saveEndpoint: function () { this.guard(async () => { await this.verifyOptions(this.endpointForm.product_ids);await this.api('endpoints', 'POST', this.endpointForm); this.endpointVisible = false; this.notice = '商家群地址已保存，未发送测试消息。'; await this.loadEndpoints(); }); },
+        saveEndpoint: function () { this.guard(async () => { await this.api('endpoints', 'POST', this.endpointForm); this.endpointVisible = false; this.notice = '商家群地址已保存，未发送测试消息。'; await this.loadEndpoints(); }); },
         testEndpoint: function (e) { this.guard(async () => { var d = await this.api('endpoints/' + e.id + '/test', 'POST', {}); if (d.status !== 'accepted') throw new Error(d.reason || '测试未确认成功。'); this.notice = '测试消息已被接口受理。'; }); },
         deleteEndpoint: function (e) { this.guard(async () => { var proceed=await new Promise(resolve=>{var dialog=this.$dialog.confirm({header:'删除商家群接收地址',body:'删除「'+e.name+'」？此地址关联 '+e.product_ids.length+' 个商品，尚未发送的群通知将停止。历史通知记录会保留。',confirmBtn:'删除地址',cancelBtn:'保留地址',onConfirm:()=>{dialog.hide();resolve(true);},onClose:()=>{dialog.hide();resolve(false);}});});if(!proceed)return;await this.api('endpoints/' + e.id, 'DELETE'); await this.loadEndpoints(); this.notice = '群接收地址已删除，尚未发送的群通知已停止。'; }); },
         invalidatePreview: function () { this.preview = null; this.broadcastKey = ''; },

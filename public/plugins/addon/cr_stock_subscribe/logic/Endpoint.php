@@ -68,10 +68,19 @@ class Endpoint
         $products = $admin ? Store::ids($input['product_ids'] ?? []) : [];
         $threshold = Store::number($input['threshold'] ?? 3,0,100000000,'库存门槛');
         $changed=!$old || $old['kind']!==$kind || !hash_equals($oldUrl,$url) || !hash_equals($oldSecret,$secret) || (int)$old['enabled']!==$enabled || (int)$old['threshold']!==$threshold || Store::decode($old['product_ids'])!==$products;
-        $baseline = $old && !$changed ? Store::decode($old['baseline']) : [];
-        foreach ($changed ? $products : [] as $pid) {
+        $oldProducts=$old ? Store::decode($old['product_ids']) : [];
+        // Stopping or renaming an existing destination must remain possible
+        // after a linked product is closed or deleted. New links and enabling
+        // still require products that are open for subscriptions.
+        $checkProducts=$changed && $enabled ? $products : array_diff($products,$oldProducts); $rules=[];
+        foreach ($checkProducts as $pid) {
             $r = Store::table('product')->where('product_id',$pid)->find();
             if (!$r || !$r['enabled']) { throw new \DomainException('群推送商品须先开放补货订阅。'); }
+            $rules[$pid]=$r;
+        }
+        $baseline = $old ? array_intersect_key(Store::decode($old['baseline']),array_fill_keys($products,true)) : [];
+        foreach ($changed && $enabled ? $products : [] as $pid) {
+            $r = $rules[$pid];
             // Baseline the current inventory, even if the next minute scan has
             // not seen a recent replenishment yet. Do not consume that scan
             // here, since personal subscribers still need its stock event.

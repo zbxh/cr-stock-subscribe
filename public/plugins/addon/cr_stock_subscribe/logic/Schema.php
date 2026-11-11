@@ -52,6 +52,9 @@ final class Schema
         if (!Db::query('SHOW INDEX FROM `'.$itemTable.'` WHERE Key_name=\'merge_group\'')) {
             Db::execute('ALTER TABLE `'.$itemTable.'` ADD INDEX `merge_group` (`batch_key`,`status`,`client_id`,`channel`,`endpoint_id`,`receiver_hash`,`event_type`,`due_at`)');
         }
+        if (!Db::query('SHOW INDEX FROM `'.$itemTable.'` WHERE Key_name=\'product_cycle\'')) {
+            Db::execute('ALTER TABLE `'.$itemTable.'` ADD INDEX `product_cycle` (`product_id`,`cycle`)');
+        }
         $deliveryTable=Db::connect()->getConfig('prefix').Store::PREFIX.'delivery';
         if(!Db::query('SHOW INDEX FROM `'.$deliveryTable.'` WHERE Key_name=\'archive_time\'')) { Db::execute('ALTER TABLE `'.$deliveryTable.'` ADD INDEX `archive_time` (`archived_at`,`created_at`)'); }
         $prefix=Db::connect()->getConfig('prefix').Store::PREFIX;

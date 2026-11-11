@@ -27,5 +27,6 @@ jobs:
           node-version: '22'
       - run: python3 scripts/check.py
       - run: php tests/security_test.php
+      - run: php tests/mail_render_test.php
       - run: python3 tests/package_test.py
       - run: python3 scripts/package.py --output "$RUNNER_TEMP/stock-subscribe-package"

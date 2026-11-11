@@ -87,17 +87,17 @@ class CrStockSubscribe extends Plugin
     public function afterUpstreamProductUpdate($p)
     {
         $id=(int)($p['id'] ?? 0);
-        if ($id) { Store::table('product')->where('product_id',$id)->update(['fresh_at'=>time(),'checked_at'=>0]); $this->dirty(['id'=>$id]); }
+        if ($id) { $this->dirty(['id'=>$id]); }
     }
     public function cartViewAppend($p)
     {
         if (!Store::active() || !in_array(strtolower((string)($p['view_html'] ?? '')),['goodslist','goodslist.php','goods','goods.php'],true)) { return []; }
-        return ['body'=>'<script src="/plugins/addon/cr_stock_subscribe/template/entry.js?v=0.1.2&amp;rev=20261103d" data-member-url="' . Store::memberPath() . '" data-stock-cart="1"></script>'];
+        return ['body'=>'<script src="/plugins/addon/cr_stock_subscribe/template/entry.js?v=0.1.3&amp;rev=20261103d" data-member-url="' . Store::memberPath() . '" data-stock-cart="1"></script>'];
     }
     public function clientareaViewAppend($p)
     {
         if (!Store::active()) { return []; }
-        return ['body'=>'<script src="/plugins/addon/cr_stock_subscribe/template/entry.js?v=0.1.2&amp;rev=20261103d" data-member-url="' . Store::memberPath() . '"></script>'];
+        return ['body'=>'<script src="/plugins/addon/cr_stock_subscribe/template/entry.js?v=0.1.3&amp;rev=20261103d" data-member-url="' . Store::memberPath() . '"></script>'];
     }
     public function appendSendParam()
     {

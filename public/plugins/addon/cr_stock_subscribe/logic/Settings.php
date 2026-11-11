@@ -17,13 +17,13 @@ final class Settings
             'max_subscriptions' => 20, 'valid_days' => 90, 'check_seconds' => 60, 'merge_seconds' => 60,
             'cooldown_seconds' => 3600, 'sms_product_seconds' => 86400, 'sms_client_daily' => 3, 'sms_site_daily' => 100,
             'email_per_minute'=>20, 'sms_per_minute'=>10,
-            'sms_signature_length'=>10, 'history_archive_days'=>0, 'notification_seconds' => 1800, 'webhook_attempts' => 3, 'upstream_fresh_seconds' => 900];
+            'sms_signature_length'=>10, 'history_archive_days'=>0, 'notification_seconds' => 1800, 'webhook_attempts' => 3];
     }
     public static function get() : array { if(self::$snapshot!==null) { return self::$snapshot; } return array_replace(self::defaults(), Store::decode(Store::table('setting')->where('id', 1)->value('data'))); }
     public static function revision(array $settings) : string { return hash('sha256',Store::json($settings)); }
     public static function save(array $input, int $admin, ?string $expectedRevision = null) : array
     {
-        $bounds = ['email_per_minute'=>[1,1000], 'sms_per_minute'=>[1,1000], 'sms_signature_length'=>[0,100], 'history_archive_days'=>[0,3650], 'max_subscriptions' => [1,200], 'valid_days' => [1,730], 'check_seconds' => [60,3600], 'merge_seconds' => [0,300], 'cooldown_seconds' => [60,86400], 'sms_product_seconds' => [3600,604800], 'sms_client_daily' => [0,10000], 'sms_site_daily' => [0,1000000], 'notification_seconds' => [60,86400], 'webhook_attempts' => [1,3], 'upstream_fresh_seconds' => [60,86400]];
+        $bounds = ['email_per_minute'=>[1,1000], 'sms_per_minute'=>[1,1000], 'sms_signature_length'=>[0,100], 'history_archive_days'=>[0,3650], 'max_subscriptions' => [1,200], 'valid_days' => [1,730], 'check_seconds' => [60,3600], 'merge_seconds' => [0,300], 'cooldown_seconds' => [60,86400], 'sms_product_seconds' => [3600,604800], 'sms_client_daily' => [0,10000], 'sms_site_daily' => [0,1000000], 'notification_seconds' => [60,86400], 'webhook_attempts' => [1,3]];
         return Store::transaction(function () use ($input, $admin, $bounds, $expectedRevision) {
             $row = Store::table('setting')->where('id', 1)->lock(true)->find(); $old = self::get(); $next = $old;
             if ($expectedRevision!==null && !hash_equals(self::revision($old),$expectedRevision)) { throw new \DomainException('设置已在其他页面更新。当前草稿已保留，请重新读取最新设置后再修改保存。'); }
@@ -47,6 +47,6 @@ final class Settings
     }
     public static function labels() : array
     {
-        return ['email_per_minute'=>'每分钟邮件上限','sms_per_minute'=>'每分钟短信提交上限','sms_signature_length'=>'短信签名预留字符','history_archive_days'=>'历史通知归档天数','max_subscriptions'=>'每人有效订阅上限','valid_days'=>'订阅有效天数','check_seconds'=>'检查间隔（秒）','merge_seconds'=>'合并窗口（秒）','cooldown_seconds'=>'同商品提醒冷却（秒）','sms_product_seconds'=>'同商品短信间隔（秒）','sms_client_daily'=>'每人每日短信额度','sms_site_daily'=>'全站每日短信额度','notification_seconds'=>'通知有效期（秒）','webhook_attempts'=>'Webhook 最大尝试次数','upstream_fresh_seconds'=>'上游库存有效期（秒）'];
+        return ['email_per_minute'=>'每分钟邮件上限','sms_per_minute'=>'每分钟短信提交上限','sms_signature_length'=>'短信签名预留字符','history_archive_days'=>'历史通知归档天数','max_subscriptions'=>'每人有效订阅上限','valid_days'=>'订阅有效天数','check_seconds'=>'检查间隔（秒）','merge_seconds'=>'合并窗口（秒）','cooldown_seconds'=>'同商品提醒冷却（秒）','sms_product_seconds'=>'同商品短信间隔（秒）','sms_client_daily'=>'每人每日短信额度','sms_site_daily'=>'全站每日短信额度','notification_seconds'=>'通知有效期（秒）','webhook_attempts'=>'Webhook 最大尝试次数'];
     }
 }

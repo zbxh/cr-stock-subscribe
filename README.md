@@ -6,7 +6,7 @@
 
 客户按库存门槛订阅，商家统一管理通知渠道、补货群发与发送频率。
 
-[![版本](https://img.shields.io/badge/version-0.1.2%20beta-orange)](https://github.com/zbxh/cr-stock-subscribe/releases/tag/v0.1.2)
+[![版本](https://img.shields.io/badge/version-0.1.3%20beta-orange)](https://github.com/zbxh/cr-stock-subscribe/releases/tag/v0.1.3)
 [![智简魔方 V10 业务系统](https://img.shields.io/badge/platform-%E6%99%BA%E7%AE%80%E9%AD%94%E6%96%B9%20V10%20%E4%B8%9A%E5%8A%A1%E7%B3%BB%E7%BB%9F-blue)](#compatibility)
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-777bb4)](#compatibility)
 [![检查](https://github.com/zbxh/cr-stock-subscribe/actions/workflows/check.yml/badge.svg)](https://github.com/zbxh/cr-stock-subscribe/actions/workflows/check.yml)
@@ -23,7 +23,7 @@
 
 商家可以根据订阅人数和门槛分布安排补货，控制邮件与短信的发送频率，配置企业微信、钉钉及通用 Webhook 群通知，也可以针对多个商品预览后统一发送补货通知。
 
-插件独立安装，复用 V10 的账户、权限、菜单、定时任务、通知模板和发送接口。当前版本为 **0.1.2 测试版**。
+插件独立安装，复用 V10 的账户、权限、菜单、定时任务、通知模板和发送接口。当前版本为 **0.1.3 测试版**。
 
 <a id="features"></a>
 
@@ -56,7 +56,7 @@
 - 使用商品总库存，支持 `0 → 1 → 5` 逐步补货时按各客户门槛触发。
 - 首次开放、重新开放及插件重新启用建立库存基线，不推送已有库存。
 - 商品编辑、订单与服务库存相关钩子配合系统分钟任务检查，按商品批量读取，不逐个客户重复查询库存。
-- 使用 V10 已有上游库存同步结果，不增加独立上游轮询；无法可靠确认库存时等待后续复核。
+- 本地与代理商品均使用 V10 已保存的商品总库存，实时性取决于系统自身同步，不增加独立上游轮询；无法读取或数量非法时等待后续复核。
 - 调度短暂延迟后保留原补货轮次、待发通知和有效期，恢复时继续核对当前条件。
 
 ### 邮件、短信与个人 Webhook
@@ -93,6 +93,7 @@
 - 邮件和短信分别设置每分钟 1–1000 次提交上限，默认邮件 20 封、短信 10 次，使用连续 60 秒窗口。
 - 自动补货、下架、人工群发及明确失败的重试共用对应渠道限额；邮件、短信互不占用。
 - 超额通知在原有效期内等待后续调度，不消耗重试次数和短信每日额度。
+- 发送频率旁显示待发、待合并、发送中和最早过期时间，按填写频率估算排空时间；刷新队列保留未保存草稿。
 - 短信支持每人每日额度、全站每日额度、同客户同商品发送间隔；并发发送计入额度预占。
 - 预计计费条数依据最终模板内容估算，包含签名预留；实际计费以短信服务商为准。
 
@@ -124,7 +125,7 @@
 
 ## 快速安装
 
-1. 从 [GitHub Releases](https://github.com/zbxh/cr-stock-subscribe/releases) 下载 `CrStockSubscribe-0.1.2.zip`。页面自动生成的 Source code 是仓库源码，不是商城安装包。
+1. 从 [GitHub Releases](https://github.com/zbxh/cr-stock-subscribe/releases) 下载 `CrStockSubscribe-0.1.3.zip`。页面自动生成的 Source code 是仓库源码，不是商城安装包。
 2. 解压到 V10 的 `public/plugins/addon/`，确认入口为 `cr_stock_subscribe/CrStockSubscribe.php`。该 ZIP 的顶层就是 `cr_stock_subscribe/`。
 3. 在后台应用／插件管理中安装并启用“补货订阅”，然后在插件后台开放允许订阅的商品。
 4. 配置通知渠道和 V10 原生邮件／短信接口；短信默认关闭，需要关联模板并完成服务商要求的审核。
@@ -158,8 +159,8 @@
 
 ## 版本与下载
 
-- 当前版本：**0.1.2 测试版**。
-- [下载与发布说明](https://github.com/zbxh/cr-stock-subscribe/releases/tag/v0.1.2)
+- 当前版本：**0.1.3 测试版**。
+- [下载与发布说明](https://github.com/zbxh/cr-stock-subscribe/releases/tag/v0.1.3)
 - [更新日志](CHANGELOG.md) · [版本索引](releases/index.json)
 - 每个版本提供商城结构 ZIP 和 SHA256，后续修复使用 0.1.x 版本递增，历史版本继续保留。
 

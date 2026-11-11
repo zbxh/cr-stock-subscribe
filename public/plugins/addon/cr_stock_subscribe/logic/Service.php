@@ -63,7 +63,7 @@ class Service
     {
         $groups=Db::name('product_group')->field('id,name,parent_id,hidden')->order('order','desc')->order('id','asc')->select()->toArray();
         $rows=Db::name('product')->alias('p')->leftJoin(Store::PREFIX . 'product r','r.product_id=p.id')->where('p.product_id',0)
-            ->field('p.id,p.name,p.order product_order,p.product_group_id,p.hidden,p.stock_control,p.qty,p.sync_stock,r.enabled,r.fresh_at')->order('p.order','desc')->order('p.id','asc')->select()->toArray();
+            ->field('p.id,p.name,p.order product_order,p.product_group_id,p.hidden,p.stock_control,p.qty,r.enabled')->order('p.order','desc')->order('p.id','asc')->select()->toArray();
         $reads=(new Inventory())->readMany($rows,$groups); $demand=[]; $last=[];
         foreach (Store::table('subscription')->where('status','active')->where('expires_at','>',time())->field('product_id,threshold,COUNT(*) subscribers')->group('product_id,threshold')->order('threshold')->select()->toArray() as $r) {
             $demand[$r['product_id']][]=['threshold'=>(int)$r['threshold'],'subscribers'=>(int)$r['subscribers']];
@@ -74,7 +74,6 @@ class Service
             $r['subscribers']=array_sum(array_column($r['thresholds'],'subscribers'));
             $r['last_notified_at']=$last[$r['id']] ?? 0;
             $r['inventory_state']=$reads[$r['id']]['state']; $r['inventory_reason']=$reads[$r['id']]['reason'] ?? '';
-            unset($r['sync_stock'],$r['fresh_at']);
         }
         unset($r);
         return ['list'=>$rows,'count'=>count($rows),'groups'=>$groups];
@@ -245,7 +244,25 @@ class Service
             $overview[]=['key'=>$key,'label'=>$label,'state'=>$state,'summary'=>$summary,'details'=>$details];
         }
         $usage=['day'=>date('Y-m-d'),'reserved'=>(int)Store::table('sms_budget')->where('day',date('Y-m-d'))->where('client_id',0)->value('reserved'),'limit'=>(int)$settings['sms_site_daily']];
-        return ['settings'=>$settings,'settings_revision'=>Settings::revision($settings),'labels'=>Settings::labels(),'templates'=>$templates,'parameters'=>Notice::parameters(),'channel_overview'=>$overview,'sms_usage'=>$usage,'version'=>Store::VERSION,'last_cron_at'=>(int)Store::table('setting')->where('id',2)->value('updated_at')];
+        return ['settings'=>$settings,'settings_revision'=>Settings::revision($settings),'labels'=>Settings::labels(),'templates'=>$templates,'parameters'=>Notice::parameters(),'channel_overview'=>$overview,'sms_usage'=>$usage,'send_queue'=>$this->sendQueue($settings),'version'=>Store::VERSION,'last_cron_at'=>(int)Store::table('setting')->where('id',2)->value('updated_at')];
+    }
+    private function sendQueue(array $settings) : array
+    {
+        $now=time(); $channels=[];
+        foreach (['email','sms'] as $channel) {
+            $queued=Store::table('delivery')->where('channel',$channel)->whereIn('status',['pending','queued','failed'])->where('expires_at','>',$now);
+            $pending=(int)(clone $queued)->count();
+            $expires=(int)(clone $queued)->min('expires_at');
+            $rate=(int)$settings[$channel.'_per_minute'];
+            $minutes=(int)ceil($pending/$rate);
+            $channels[]=['channel'=>$channel,'pending_deliveries'=>$pending,
+                'pending_items'=>(int)Store::table('item')->where('channel',$channel)->where('status','pending')->where('expires_at','>',$now)->count(),
+                'sending'=>(int)Store::table('delivery')->where('channel',$channel)->where('status','sending')->count(),
+                'per_minute'=>$rate,'estimated_minutes'=>$minutes,'earliest_expires_at'=>$expires,
+                'expires_in_seconds'=>$expires ? max(0,$expires-$now) : 0,
+                'expiry_risk'=>$pending>0 && $expires<=$now+$minutes*60];
+        }
+        return ['checked_at'=>$now,'channels'=>$channels];
     }
     public function testEndpoint(int $id, int $owner, int $admin = 0) : array
     {

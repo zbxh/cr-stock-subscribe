@@ -8,37 +8,29 @@ class Inventory
     public function read(int $id) : array
     {
         try {
-            $p = Db::name('product')->where('id',$id)->where('product_id',0)->field('id,name,product_group_id,hidden,stock_control,qty,sync_stock,price')->find();
+            $p = Db::name('product')->where('id',$id)->where('product_id',0)->field('id,name,product_group_id,hidden,stock_control,qty,price')->find();
             return $this->describe($p,static function ($groupId) {
                 return Db::name('product_group')->where('id',$groupId)->field('id,hidden,parent_id')->find();
-            },static function () use ($p,$id) {
-                if (empty($p['sync_stock']) || !Db::name('upstream_product')->where('product_id',$id)->count()) { return true; }
-                $fresh=(int)Store::table('product')->where('product_id',$id)->value('fresh_at');
-                return $fresh && $fresh >= time() - Settings::get()['upstream_fresh_seconds'];
             });
         } catch (\Throwable $e) { return ['state'=>'unknown','reason'=>'暂时无法读取商品库存']; }
     }
-    // The catalog reuses the same stock rules without querying each product's
-    // groups, upstream mapping and freshness separately.
+    // Both local and proxy products use V10's stored product-level quantity.
+    // sync_stock controls stock rollback, not upstream synchronization. Native
+    // stock sync does not consistently emit an event with a reliable timestamp.
     public function readMany(array $products, array $groups) : array
     {
         $result=[]; $groupMap=[];
         foreach ($groups as $group) { $groupMap[(int)$group['id']]=$group; }
         try {
-            $ids=array_column($products,'id');
-            $upstream=$ids ? array_fill_keys(Db::name('upstream_product')->whereIn('product_id',$ids)->column('product_id'),true) : [];
-            $cutoff=time()-Settings::get()['upstream_fresh_seconds'];
             foreach ($products as $p) {
-                $result[(int)$p['id']]=$this->describe($p,static function ($id) use ($groupMap) { return $groupMap[$id] ?? null; },static function () use ($p,$upstream,$cutoff) {
-                    return empty($p['sync_stock']) || !isset($upstream[$p['id']]) || (!empty($p['fresh_at']) && (int)$p['fresh_at'] >= $cutoff);
-                });
+                $result[(int)$p['id']]=$this->describe($p,static function ($id) use ($groupMap) { return $groupMap[$id] ?? null; });
             }
         } catch (\Throwable $e) {
             foreach ($products as $p) { $result[(int)$p['id']]=['state'=>'unknown','reason'=>'暂时无法读取商品库存']; }
         }
         return $result;
     }
-    private function describe(?array $p, callable $groupById, callable $isFresh) : array
+    private function describe(?array $p, callable $groupById) : array
     {
         if (!$p || !empty($p['hidden'])) { return ['state'=>'blocked','reason'=>'商品已隐藏或删除']; }
         $groupId=(int)$p['product_group_id']; $seen=[];
@@ -50,7 +42,6 @@ class Inventory
         }
         if (empty($p['stock_control'])) { return ['state'=>'blocked','reason'=>'商品未启用数量库存控制']; }
         if (!is_numeric($p['qty']) || (int)$p['qty']<0) { return ['state'=>'unknown','reason'=>'库存数量无法确认']; }
-        if (!$isFresh()) { return ['state'=>'unknown','reason'=>'等待 V10 上游库存同步确认']; }
         return ['state'=>'known','product'=>$p];
     }
     public function observe(int $id, bool $force = false) : array
