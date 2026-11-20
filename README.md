@@ -11,7 +11,7 @@
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-777bb4)](#compatibility)
 [![检查](https://github.com/zbxh/cr-stock-subscribe/actions/workflows/check.yml/badge.svg)](https://github.com/zbxh/cr-stock-subscribe/actions/workflows/check.yml)
 
-[功能明细](#features) · [快速安装](#installation) · [配置指南](docs/guide.md) · [兼容说明](docs/compatibility.md) · [下载版本](https://github.com/zbxh/cr-stock-subscribe/releases) · [问题反馈](https://github.com/zbxh/cr-stock-subscribe/issues)
+[功能明细](#features) · [界面预览](#screenshots) · [快速安装](#installation) · [配置指南](docs/guide.md) · [兼容说明](docs/compatibility.md) · [下载版本](https://github.com/zbxh/cr-stock-subscribe/releases) · [问题反馈](https://github.com/zbxh/cr-stock-subscribe/issues)
 
 </div>
 
@@ -24,6 +24,24 @@
 商家可以根据订阅人数和门槛分布安排补货，控制邮件与短信的发送频率，配置企业微信、钉钉及通用 Webhook 群通知，也可以针对多个商品预览后统一发送补货通知。
 
 插件独立安装，复用 V10 的账户、权限、菜单、定时任务、通知模板和发送接口。当前版本为 **0.1.3 测试版**。
+
+<a id="screenshots"></a>
+
+## 界面预览
+
+以下为 **0.1.3 测试版**实际界面，使用演示商品与账户；布局会随主题和窗口宽度变化。[查看全部 10 张截图及功能说明](docs/screenshots.md)。
+
+**后台商品与需求**：按分类管理订阅开放状态，查看商品库存、订阅人数及最近通知。
+
+![后台商品与需求管理](docs/images/admin-products.png)
+
+**会员我的订阅**：集中管理关注商品、库存门槛、通知渠道及提醒模式。
+
+![会员我的订阅](docs/images/member-subscriptions.png)
+
+**补货群发预览**：发送前确认涉及商品、去重客户数、各渠道数量和短信预计费用。
+
+![补货群发预览](docs/images/admin-broadcast-preview.png)
 
 <a id="features"></a>
 
