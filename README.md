@@ -11,7 +11,7 @@
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-777bb4)](#compatibility)
 [![检查](https://github.com/zbxh/cr-stock-subscribe/actions/workflows/check.yml/badge.svg)](https://github.com/zbxh/cr-stock-subscribe/actions/workflows/check.yml)
 
-[功能明细](#features) · [界面预览](#screenshots) · [快速安装](#installation) · [配置指南](docs/guide.md) · [兼容说明](docs/compatibility.md) · [下载版本](https://github.com/zbxh/cr-stock-subscribe/releases) · [问题反馈](https://github.com/zbxh/cr-stock-subscribe/issues)
+[功能明细](#features) · [界面预览](#screenshots) · [快速安装](#installation) · [配置指南](docs/guide.md) · [兼容说明](docs/compatibility.md) · [下载版本](https://github.com/zbxh/cr-stock-subscribe/releases) · [问题反馈](https://github.com/zbxh/cr-stock-subscribe/issues) · [相关项目](#相关项目)
 
 </div>
 
@@ -192,6 +192,16 @@ python3 scripts/package.py --output /path/to/output
 ```
 
 检查范围和外部 V10 环境验证方式见 [测试说明](docs/testing.md)。
+
+## 相关项目
+
+| 项目 | 用途 |
+| --- | --- |
+| [酷锐 A1 主题（CRA1）](https://github.com/zbxh/cra1-theme-public) | 智简魔方 V10 的官网、会员中心与购物车主题。 |
+| [赠金](https://github.com/zbxh/cr-gift-credit-showcase) | 按规则发放独立赠金，在适用订单中自选金额抵扣。 |
+| [产品兑换码](https://github.com/zbxh/cr-product-redeem-showcase) | 按配置创建兑换批次，客户凭码开通服务器。 |
+| [自助更换 IP](https://github.com/zbxh/cr-self-change-ip-showcase) | 为魔方云服务器提供主 IPv4 更换、报价和审核。 |
+| [统一到期日期](https://github.com/zbxh/cr-unified-expiry-showcase) | 将多台服务器的到期日调整到同一日号，方便集中续费。 |
 
 ## 使用与二次开发
 
